@@ -4,10 +4,13 @@ namespace App\Services;
 
 use App\Repositories\UserRepository;
 use App\Events\UserRegistered;
+use App\Mail\AccountLockedMail;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\JsonResponse;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class UserService
 {
@@ -22,10 +25,8 @@ class UserService
         $this->repo = $repo;
         $this->auditService = $auditService;
     }
-
     public function register(array $data): JsonResponse
     {
-        // التحقق من البيانات الأساسية
         if (!isset($data['email']) || !isset($data['password']) || !isset($data['name'])) {
             return response()->json([
                 'status' => false,
@@ -41,16 +42,6 @@ class UserService
             ], 422);
         }
 
-        // تحقق من قوة كلمة المرور
-        $passwordError = $this->validatePassword($data['password']);
-        if ($passwordError) {
-            return response()->json([
-                'status' => false,
-                'message' => $passwordError
-            ], 422);
-        }
-
-        // التحقق من وجود الإيميل في الداتابيز
         if ($this->repo->findByEmail($data['email'])) {
             $this->auditService->logSecurityEvent('duplicate_registration_attempt', [
                 'email' => $data['email']
@@ -61,7 +52,6 @@ class UserService
             ], 422);
         }
 
-        // التحقق من وجود عملية تسجيل pending
         $cacheKey = "pending_user_" . $data['email'];
         if (Cache::get($cacheKey)) {
             return response()->json([
@@ -70,10 +60,9 @@ class UserService
             ], 422);
         }
 
-        // إنشاء OTP وتخزين مؤقت
         $otp = (string) rand(100000, 999999);
         $data['password'] = Hash::make($data['password']);
-        $data['role'] = 'citizen'; // تحديد الدور الافتراضي
+
 
         Cache::put($cacheKey, [
             'data' => $data,
@@ -95,7 +84,6 @@ class UserService
             'pending_email' => $data['email']
         ]);
     }
-
     public function verifyOtp(string $email, string $otp): JsonResponse
     {
         $cacheKey = "pending_user_" . $email;
@@ -118,6 +106,7 @@ class UserService
         }
 
         $user = $this->repo->create($pending['data']);
+        $user->assignRole('citizen');
         Cache::forget($cacheKey);
 
         $this->auditService->logAction($user->id, 'user_verified', [
@@ -132,11 +121,10 @@ class UserService
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
-                // 'role' => $user->role
+                'roles' => $user->getRoleNames()
             ]
         ]);
     }
-
     public function login(array $credentials): JsonResponse
     {
         if (!isset($credentials['email']) || !isset($credentials['password'])) {
@@ -166,7 +154,12 @@ class UserService
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        $this->auditService->logAction($user->id, 'user_logged_in');
+        // $this->auditService->logAction($user->id, 'user_logged_in');
+
+        $this->auditService->logAction($user->id, 'user_logged_in', [
+            'ip' => request()->ip(),
+            'user_agent' => request()->userAgent()
+        ]);
 
         return response()->json([
             'status' => true,
@@ -175,35 +168,26 @@ class UserService
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->role
+                'email' => $user->email
             ]
         ]);
     }
-
-    // ========== الدوال المساعدة للأمان ==========
-
-    private function validatePassword(string $password): ?string
+    public function logout($user): JsonResponse
     {
-        if (strlen($password) < 8) {
-            return 'Password must be at least 8 characters long';
-        }
+        $user->tokens()->delete();
 
-        if (!preg_match('/[A-Z]/', $password)) {
-            return 'Password must contain at least one uppercase letter';
-        }
+        $this->auditService->logAction($user->id, 'user_logged_out', [
+            'ip' => request()->ip(),
+            'user_agent' => request()->userAgent(),
+            'logout_at' => now()->toDateTimeString()
+        ]);
 
-        if (!preg_match('/[a-z]/', $password)) {
-            return 'Password must contain at least one lowercase letter';
-        }
 
-        if (!preg_match('/[0-9]/', $password)) {
-            return 'Password must contain at least one number';
-        }
-
-        return null;
+        return response()->json([
+            'status' => true,
+            'message' => 'Logout successful.'
+        ], 200);
     }
-
     private function checkAccountLockout(string $email): ?JsonResponse
     {
         $lockoutKey = "account_lockout_" . $email;
@@ -217,7 +201,6 @@ class UserService
             ], 423);
         }
 
-        // تنظيف الحظر إذا انتهى
         if ($lockoutTime && now()->greaterThan($lockoutTime)) {
             Cache::forget($lockoutKey);
             $this->resetLoginAttempts($email);
@@ -225,21 +208,30 @@ class UserService
 
         return null;
     }
-
     private function handleFailedLogin(string $email): void
     {
         $attemptsKey = "login_attempts_" . $email;
+
         $currentAttempts = Cache::get($attemptsKey, 0) + 1;
 
         Cache::put($attemptsKey, $currentAttempts, now()->addMinutes($this->lockoutTime));
 
-        // إذا تجاوز الحد المسموح، احظر الحساب
         if ($currentAttempts >= $this->maxLoginAttempts) {
+
             $lockoutKey = "account_lockout_" . $email;
             $lockoutUntil = now()->addMinutes($this->lockoutTime);
 
+            // تخزين وقت الحظر
             Cache::put($lockoutKey, $lockoutUntil, $lockoutUntil);
 
+            // إرسال بريد للمستخدم
+            try {
+                Mail::to($email)->queue(new AccountLockedMail($lockoutUntil));
+            } catch (\Exception $e) {
+                Log::error("Failed to send account locked email: " . $e->getMessage());
+            }
+
+            // تسجيل حدث أمني
             $this->auditService->logSecurityEvent('account_locked', [
                 'email' => $email,
                 'attempts' => $currentAttempts,
@@ -247,22 +239,29 @@ class UserService
             ]);
         }
     }
-
     private function resetLoginAttempts(string $email): void
     {
         Cache::forget("login_attempts_" . $email);
         Cache::forget("account_lockout_" . $email);
     }
 
-    public function logout($user): JsonResponse
-    {
-        $user->currentAccessToken()->delete();
 
-        $this->auditService->logAction($user->id, 'user_logged_out');
+    public function createEmployee(array $data): JsonResponse
+    {
+        $data['password'] = Hash::make($data['password']);
+        $user = $this->repo->create($data);
+        $user->assignRole('employee');
 
         return response()->json([
             'status' => true,
-            'message' => 'Logout successful'
-        ]);
+            'message' => 'Employee user created successfully.',
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->getRoleNames()->first(),
+                'entity_id' => $user->entity_id,
+            ]
+        ], 201);
     }
 }

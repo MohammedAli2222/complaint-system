@@ -17,13 +17,8 @@ return new class extends Migration
             $table->string('name');
             $table->string('email')->unique();
             $table->string('password');
-
-            $table->enum('role', ['citizen', 'employee', 'admin'])->default('citizen');
-
-            // $table->string('profile_picture')->nullable();
-            // $table->unsignedBigInteger('entity_id')->nullable();
-            // $table->foreign('entity_id')->references('id')->on('entities')->nullOnDelete();
-
+            $table->unsignedBigInteger('entity_id')->nullable();
+            $table->foreign('entity_id')->references('id')->on('entities')->nullOnDelete();
             $table->integer('failed_login_attempts')->default(0);
             $table->timestamp('account_locked_until')->nullable();
 

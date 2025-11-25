@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\UserService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rules\Password;
 
 class UserController extends Controller
 {
@@ -15,15 +16,15 @@ class UserController extends Controller
     }
 
     public function register(Request $request)
-    {
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255',
-            'password' => 'required|string|min:6'
-        ]);
+{
+    $request->validate([
+        'name' => 'required|string|max:255',
+        'email' => 'required|email|max:255',
+        'password' => ['required', Password::min(8)->mixedCase()->numbers()],
+    ]);
 
-        return $this->service->register($request->all());
-    }
+    return $this->service->register($request->all());
+}
 
     public function verifyOtp(Request $request)
     {
@@ -47,4 +48,10 @@ class UserController extends Controller
 
         return $this->service->login($request->all());
     }
+
+    public function logout(Request $request)
+    {
+        return $this->service->logout($request->user());
+    }
+    
 }

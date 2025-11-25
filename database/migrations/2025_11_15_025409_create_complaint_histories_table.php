@@ -13,7 +13,17 @@ return new class extends Migration
     {
         Schema::create('complaint_histories', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('complaint_id')->constrained()->onDelete('cascade');
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('action'); // status_changed, note_added, assigned, etc.
+            $table->text('description')->nullable();
+            $table->json('old_data')->nullable();
+            $table->json('new_data')->nullable();
             $table->timestamps();
+
+            $table->index('complaint_id');
+            $table->index('user_id');
+            $table->index('action');
         });
     }
 

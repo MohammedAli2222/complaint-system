@@ -1,5 +1,6 @@
 <?php
 
+use App\Events\TestNotification;
 use Illuminate\Support\Facades\Route;
 
 /*
@@ -13,6 +14,11 @@ use Illuminate\Support\Facades\Route;
 |
 */
 
-Route::get('/', function () {
-    return view('welcome');
+Route::get('/test-reverb', function () {
+    try {
+        event(new TestNotification('رسالة تجريبية من الباك اند فقط'));
+        return response()->json(['status' => 'success', 'message' => 'Notification sent']);
+    } catch (\Exception $e) {
+        return response()->json(['status' => 'error', 'message' => $e->getMessage()]);
+    }
 });

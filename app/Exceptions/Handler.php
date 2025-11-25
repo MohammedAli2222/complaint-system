@@ -23,8 +23,12 @@ class Handler extends ExceptionHandler
      */
     public function register(): void
     {
-        $this->reportable(function (Throwable $e) {
-            //
+        $this->renderable(function (\Illuminate\Http\Exceptions\ThrottleRequestsException $e, $request) {
+
+            return response()->json([
+                'status' => false,
+                'message' => 'You have exceeded the number of allowed attempts. Please try again later.',
+            ], 429);    
         });
     }
 }

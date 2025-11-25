@@ -2,10 +2,12 @@
 
 namespace App\Providers;
 
+use App\Events\EmployeeCreated;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Auth\Listeners\SendEmailVerificationNotification;
 use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvider;
 use App\Events\UserRegistered;
+use App\Listeners\LogEmployeeCreation;
 use App\Listeners\SendOtpEmail;
 use App\Listeners\LogUserRegistration;
 
@@ -15,6 +17,9 @@ class EventServiceProvider extends ServiceProvider
         UserRegistered::class => [
             SendOtpEmail::class,
             LogUserRegistration::class,
+        ],
+        EmployeeCreated::class => [
+            LogEmployeeCreation::class,
         ],
     ];
 

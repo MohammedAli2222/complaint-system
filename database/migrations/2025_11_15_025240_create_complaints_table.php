@@ -13,6 +13,16 @@ return new class extends Migration
     {
         Schema::create('complaints', function (Blueprint $table) {
             $table->id();
+            $table->string('reference_number')->unique();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->foreignId('entity_id')->constrained()->onDelete('cascade');
+            $table->string('type');
+            $table->string('location')->nullable();
+            $table->text('description');
+            $table->enum('status', ['new', 'processing', 'done', 'rejected'])->default('new');
+            $table->foreignId('locked_by')->nullable()->constrained('users');
+            $table->timestamp('locked_at')->nullable();
+            $table->foreignId('assigned_to')->nullable()->constrained('users');
             $table->timestamps();
         });
     }
