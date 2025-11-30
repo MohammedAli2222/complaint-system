@@ -110,22 +110,27 @@ class ComplaintController extends Controller
 
     // تتبع الشكوى
     public function track($ref, Request $request)
-    {
-        $complaint = $this->service->trackComplaint($ref, $request->user());
-
-        if (!$complaint) {
-            return response()->json([
-                'status' => false,
-                'message' => 'الشكوى غير موجودة أو لا تملك صلاحية رؤيتها'
-            ], 404);
-        }
+{
+    try {
+        $data = $this->service->trackComplaint($ref, $request->user());
 
         return response()->json([
             'status' => true,
-            'data' => $complaint
+            'message' => 'تم جلب تفاصيل الشكوى بنجاح',
+            'data' => $data
         ]);
+    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'الشكوى غير موجودة أو لا تملك صلاحية رؤيتها'
+        ], 404);
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => false,
+            'message' => 'حدث خطأ غير متوقع'
+        ], 500);
     }
-
+}
     // تحديث حالة الشكوى
     public function updateStatus($id, Request $request): JsonResponse
     {

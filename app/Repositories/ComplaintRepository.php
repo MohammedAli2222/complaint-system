@@ -91,22 +91,60 @@ class ComplaintRepository
     /**
      * جلب تفاصيل الشكوى مع السجل الزمني (Timeline) للتتبع
      */
-    public function getComplaintWithHistory(string $referenceNumber, int $userId)
+    /**
+     * جلب تفاصيل الشكوى مع السجل الزمني الكامل والمُهيأ للمواطن
+     * مع تطبيق كل المتطلبات غير الوظيفية
+     */
+    /**
+     * جلب الشكوى للمواطن فقط (مع Timeline كامل)
+     * لا يُسمح لأحد غير صاحب الشكوى برؤيتها أبدًا حتى لو عرف الرقم المرجعي
+     */
+    public function getComplaintTimelineForCitizen(string $referenceNumber, int $userId)
     {
-        return Complaint::where('reference_number', $referenceNumber)
-            ->where('user_id', $userId) // التأكد من أن الشكوى تخص المواطن
+        $complaint = Complaint::where('reference_number', $referenceNumber)
+            ->where('user_id', $userId) // أهم شرط أمان — موجود من البداية
             ->with([
                 'entity:id,name',
-                'attachments:id,complaint_id,file_type,file_path',
-
+                'attachments:id,complaint_id,file_path,file_name,file_type,file_size,created_at',
                 'history' => function ($query) {
-                    $query->select('complaint_id', 'action', 'description', 'created_at', 'old_data', 'new_data', 'user_id')
-                        ->with('user:id,name') // جلب اسم الموظف الذي قام بالتغيير
-                        ->latest();
+                    $query->select(
+                        'id',
+                        'complaint_id',
+                        'action',
+                        'description',
+                        'created_at',
+                        'user_id',
+                        'old_data',
+                        'new_data'
+                    )
+                        ->with('user:id,name')
+                        ->orderBy('created_at', 'asc');
                 }
             ])
+            ->select([
+                'id',
+                'reference_number',
+                'type',
+                'status',
+                'entity_id',
+                'location',
+                'description',
+                'created_at',
+                'updated_at',
+                'locked_by',
+                'locked_at'
+            ])
             ->first();
+
+        // لو ما لقينا شكوى → نرمي 404 برقم مرجعي عام (لا نكشف أي معلومة)
+        if (!$complaint) {
+            throw new \Illuminate\Database\Eloquent\ModelNotFoundException('الشكوى غير موجودة أو لا تملك صلاحية رؤيتها');
+        }
+
+        return $complaint;
     }
+
+    
 
     public function addNote(Complaint $complaint, $note)
     {

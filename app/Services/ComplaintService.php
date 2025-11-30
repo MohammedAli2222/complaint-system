@@ -20,6 +20,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use App\Events\CitizenResponded;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
+
 
 class ComplaintService
 {
@@ -265,12 +267,81 @@ class ComplaintService
             return $complaint;
         });
     }
-    /**
-     * خدمة تتبع الشكوى للمواطن
-     */
-    public function trackComplaint(string $ref, $user)
+
+
+    public function trackComplaint(string $ref, User $user)
     {
-        return $this->repo->getComplaintWithHistory($ref, $user->id);
+        return Cache::remember("complaint_timeline_{$ref}_{$user->id}", now()->addMinutes(5), function () use ($ref, $user) {
+
+            // جلب الشكوى مع التأكد أنها ملك المستخدم فقط (أمان كامل)
+            $complaint = $this->repo->getComplaintTimelineForCitizen($ref, $user->id);
+
+            // بناء السجل الزمني (Timeline) بأبسط وأوضح شكل
+            $timeline = collect();
+
+            // أول حدث: تقديم الشكوى
+            $timeline->push([
+                'date'        => $complaint->created_at->translatedFormat('Y/m/d - h:i A'),
+                'actor'       => 'أنت',
+                'actor_type'  => 'citizen',
+                'action'      => 'تقديم الشكوى',
+                'description' => 'تم تقديم الشكوى بنجاح وإرسالها إلى الجهة المختصة.',
+            ]);
+
+            // باقي الأحداث من جدول complaint_history
+            foreach ($complaint->history as $event) {
+                $actor = $event->user ? $event->user->name : 'النظام';
+                $actorType = ($event->user_id === $complaint->user_id) ? 'أنت' : 'موظف';
+
+                $timeline->push([
+                    'date'        => $event->created_at->translatedFormat('Y/m/d - h:i A'),
+                    'actor'       => $actor,
+                    'actor_type'  => $actorType,
+                    'action'      => $event->action,
+                    'description' => $event->description,
+                ]);
+            }
+
+            // ترتيب زمني تصاعدي (من الأقدم إلى الأحدث)
+            $timeline = $timeline->values();
+
+            // الرد النهائي للمواطن
+            return [
+                'reference_number'       => $complaint->reference_number,
+                'type'                   => $complaint->type,
+                'status'                 => $complaint->status,
+                'status_in_arabic'       => match ($complaint->status) {
+                    'new'           => 'جديدة',
+                    'processing'    => 'قيد المعالجة',
+                    'under_review'  => 'قيد المراجعة - بانتظار ردك',
+                    'done'          => 'منجزة',
+                    'rejected'      => 'مرفوضة',
+                    default         => 'غير معروف',
+                },
+                'entity_name'            => $complaint->entity->name,
+                'location'               => $complaint->location ?? 'غير محدد',
+                'description'            => $complaint->description,
+                'submitted_at'           => $complaint->created_at->translatedFormat('l، j F Y - h:i A'),
+
+                // متطلب عدم التضارب في المعالجة (المتطلب غير الوظيفي رقم 1)
+                'is_being_processed'     => !is_null($complaint->locked_by),
+
+                // متطلب طلب معلومات إضافية
+                'awaiting_your_response' => $complaint->status === 'under_review',
+                'latest_request_message' => $this->getLatestInfoRequestMessage($complaint),
+
+                // المرفقات
+                'attachments' => $complaint->attachments->map(function ($attachment) {
+                    return [
+                        'name' => $attachment->file_name ?? 'ملف مرفق',
+                        'url'  => Storage::url($attachment->file_path),
+                    ];
+                })->values(),
+
+                // السجل الزمني الكامل (المتطلب غير الوظيفي رقم 2 - Versioning)
+                'timeline' => $timeline->all(),
+            ];
+        });
     }
 
     // 7. Dashboard

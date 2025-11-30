@@ -76,7 +76,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
     // destroy
     Route::delete('user/{id}', [AdminUserController::class, 'destroy']);
     //Get System Performance
-    Route::get('/dashboard', [DashboardController::class, 'index']);
 
     Route::post('/getEmployeeNewComplaints', [ComplaintController::class, 'getEmployeeNewComplaints']);
 });
