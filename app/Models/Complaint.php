@@ -31,7 +31,7 @@ class Complaint extends Model
 
     public function attachments()
     {
-        return $this->hasMany(Attachment::class);
+        return $this->hasMany(Attachment::class, 'complaint_id', 'id');  // تأكد من اسم الموديل Attachment
     }
 
     public function history()

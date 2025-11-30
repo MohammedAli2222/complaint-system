@@ -14,7 +14,7 @@ class AdminUserSeeder extends Seeder
         $email = env('ADMIN_EMAIL', 'admin@system.gov.sy');
         $password = env('ADMIN_PASSWORD', 'password'); // سيعود لقراءة الـ .env
 
-        $admin = User::firstOrCreate(
+        $admin = User::updateOrCreate(
             ['email' => $email],
             [
                 'name' => 'System Administrator',

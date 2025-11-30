@@ -19,7 +19,7 @@ return new class extends Migration
             $table->string('type');
             $table->string('location')->nullable();
             $table->text('description');
-            $table->enum('status', ['new', 'processing', 'done', 'rejected'])->default('new');
+                $table->enum('status', ['new', 'processing', 'done', 'rejected','under_review'])->default('new');
             $table->foreignId('locked_by')->nullable()->constrained('users');
             $table->timestamp('locked_at')->nullable();
             $table->foreignId('assigned_to')->nullable()->constrained('users');

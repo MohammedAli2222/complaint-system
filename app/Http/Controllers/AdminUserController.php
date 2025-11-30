@@ -17,17 +17,16 @@ class AdminUserController extends Controller
     }
 
     //إرجاع جميع الموظفين مع الجهة والصلاحيات
-    public function index()
-    {
-        $this->authorize('viewAny', User::class); // التحقق من صلاحية العرض العام
+    // public function index()
+    // {
+    //     $this->authorize('viewAny', User::class);
 
-        $employees = $this->service->listEmployees();
-        return response()->json([
-            'status' => true,
-            'employees' => $employees
-        ]);
-    }
-
+    //     $employees = $this->service->listEmployees();
+    //     return response()->json([
+    //         'status' => true,
+    //         'employees' => $employees
+    //     ]);
+    // }
     public function store(Request $request)
     {
         $this->authorize('create', User::class); // التحقق من صلاحية الإنشاء
@@ -45,7 +44,6 @@ class AdminUserController extends Controller
 
         return response()->json(['status' => true, 'user' => $user]);
     }
-
     public function update(Request $request, $id)
     {
         $employee = User::findOrFail($id);
@@ -63,7 +61,6 @@ class AdminUserController extends Controller
 
         return response()->json(['status' => true, 'user' => $user]);
     }
-
     public function updatePermissions(Request $request, $id)
     {
         $employee = User::findOrFail($id);
@@ -78,7 +75,6 @@ class AdminUserController extends Controller
 
         return response()->json(['status' => true, 'user' => $user]);
     }
-
     public function destroy($id)
     {
         $employee = User::findOrFail($id);
@@ -88,4 +84,5 @@ class AdminUserController extends Controller
 
         return response()->json(['status' => true]);
     }
+
 }

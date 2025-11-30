@@ -56,10 +56,10 @@ class AdminUserService
     }
 
 
-    public function listEmployees()
-    {
-        return $this->repo->allEmployeesWithFullData();
-    }
+    // public function listEmployees()
+    // {
+    //     return $this->repo->allEmployeesWithFullData();
+    // }
 
 
     public function deleteEmployee(int $id)

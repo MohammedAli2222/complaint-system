@@ -18,6 +18,8 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use App\Events\CitizenResponded;
+use App\Models\User;
 
 class ComplaintService
 {
@@ -295,14 +297,105 @@ class ComplaintService
 
     public function requestMoreInfo(Complaint $complaint, string $message)
     {
-        $complaint->history()->create([
-            'action' => 'request_more_info',
-            'details' => $message,
-            'user_id' => auth()->id(),
-        ]);
+        return DB::transaction(function () use ($complaint, $message) {
+            $oldStatus = $complaint->status;
+            $newStatus = 'under_review';
 
-        broadcast(new RequestMoreInfo($complaint, $message))->toOthers();
+            // 1. تحديث حالة الشكوى
+            $complaint->update(['status' => $newStatus]);
 
-        return true;
+            ComplaintHistory::create([
+                'complaint_id' => $complaint->id,
+                'user_id'      => auth()->id(),
+                'action'       => 'request_more_info',
+                'description'  => "طلب معلومات إضافية من المواطن: " . $message,
+                'old_data'     => ['status' => $oldStatus],
+                'new_data'     => ['status' => $newStatus, 'message' => $message],
+            ]);
+
+            $this->audit->logAction(auth()->id(), 'complaint.info_requested', [
+                'complaint_id' => $complaint->id,
+                'old_status' => $oldStatus,
+                'new_status' => $newStatus,
+            ]);
+
+            broadcast(new RequestMoreInfo($complaint, $message))->toOthers();
+
+            return true;
+        });
+    }
+
+    // التابع الخاص برد المواطن على طلب المعلومات الإضافية
+    public function citizenRespondToInfoRequest(Complaint $complaint, ?Request $request = null)
+    {
+        return DB::transaction(function () use ($complaint, $request) {
+            $user = auth()->user();
+
+            // 1. Business Validation (أمان وتحقق)
+            if ($complaint->user_id !== $user->id) {
+                throw new \Exception('لا تملك صلاحية للرد على هذه الشكوى.', 403);
+            }
+            if ($complaint->status !== 'under_review') {
+                throw new \Exception('لا يمكن الرد على شكوى حالتها ليست "قيد المراجعة".', 400);
+            }
+
+            // 2. تحقق من حدود المرفقات (غير وظيفية: منع overload)
+            if ($request && $request->hasFile('files') && $complaint->attachments()->count() >= 10) {
+                throw new \Exception('تم تجاوز الحد الأقصى لعدد المرفقات (10).', 400);
+            }
+
+            // 3. معالجة المرفقات (استخدم Queue للأداء إذا كانت الملفات كبيرة)
+            if ($request && $request->hasFile('files')) {
+                $files = is_array($request->file('files')) ? $request->file('files') : [$request->file('files')];
+                // Queue job للرفع: dispatch(new ProcessAttachmentsJob($complaint, $files, $user));
+                // لكن هنا نحافظ على synchronous للبساطة، أو أضف Queue إذا لزم
+                $this->handleAttachments($complaint, $files, $user); // انقل هذه إلى Repository إذا أمكن
+            }
+
+            // 4. تحديث الحالة
+            $oldStatus = $complaint->status;
+            $newStatus = 'processing';
+            $notes = $request?->input('notes');
+            $this->repo->updateComplaintStatus($complaint, $newStatus);
+
+            // 5. تسجيل التاريخ (شفافية)
+            $description = "المواطن قام بالرد على طلب معلومات إضافية." . ($notes ? " الملاحظة: " . $notes : '');
+            $this->repo->logComplaintHistory(
+                $complaint->id,
+                $user->id,
+                'citizen_responded',
+                $description,
+                ['status' => $oldStatus],
+                ['status' => $newStatus, 'notes' => $notes, 'attachments_added' => $request?->hasFile('files') ? count($request->file('files')) : 0]
+            );
+
+            // 6. Audit Log مفصل (تتبع)
+            $this->audit->logAction($user->id, 'citizen.info_responded', [
+                'complaint_id' => $complaint->id,
+                'ip' => $request?->ip(),
+                'attachments_count' => $request?->hasFile('files') ? count($request->file('files')) : 0
+            ]);
+
+            event(new CitizenResponded($complaint));
+
+            return $complaint;
+        });
+    }
+
+    public function getLatestInfoRequestMessage(Complaint $complaint): ?string
+    {
+        // جلب أحدث سجل طلب معلومات
+        $history = $this->repo->getLatestInfoRequest($complaint->id);
+        return $history ? $history->description : null;
+    }
+
+    public function getEmployeeNewComplaints(User $user)
+    {
+        return $this->repo->getNewForEmployee($user->id, $user->entity_id);
+    }
+
+    public function getAllComplaints(array $filters = [])
+    {
+        return $this->repo->getAllWithFilters($filters);
     }
 }

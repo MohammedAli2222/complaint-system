@@ -1,10 +1,13 @@
 <?php
-// app/Repositories/ComplaintRepository.php
 
 namespace App\Repositories;
 
 use App\Models\Complaint;
 use App\Models\complaint_note;
+use App\Models\ComplaintHistory;
+use App\Models\User;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class ComplaintRepository
@@ -121,10 +124,137 @@ class ComplaintRepository
             'complaint_id' => $complaint->id,
             'user_id' => auth()->id(),
             'note' => "طلب معلومات إضافية: " . $message,
+
         ]);
     }
+
+    // نقل handleAttachments هنا للـ Data Abstraction
+    public function handleAttachments(Complaint $complaint, array $files, User $user)
+    {
+        foreach ($files as $file) {
+            if (!$file->isValid()) {
+                Log::warning('Invalid file upload detected.', ['filename' => $file->getClientOriginalName()]);
+                continue;
+            }
+
+            $allowedMimes = ['image/jpeg', 'image/png', 'application/pdf'];
+            if (!in_array($file->getClientMimeType(), $allowedMimes)) {
+                throw new \Exception('نوع الملف غير مدعوم.', 400);
+            }
+
+            $storagePath = "complaints/{$complaint->reference_number}";
+            $path = Storage::disk('public')->putFile($storagePath, $file);
+
+            $this->createAttachment($complaint, [
+                'file_path'     => $path,
+                'file_name'     => $file->getClientOriginalName(),
+                'file_type'     => $file->extension(),
+                'file_size'     => $file->getSize(),
+                'mime_type'     => $file->getClientMimeType(),
+            ]);
+        }
+    }
+
+    // updateComplaintStatus و logComplaintHistory موجودة، لكن أضف JSON encoding إذا لزم للـ old/new_data
+    public function logComplaintHistory(int $complaintId, int $userId, string $action, string $description, array $oldData = [], array $newData = [])
+    {
+        return ComplaintHistory::create([
+            'complaint_id' => $complaintId,
+            'user_id'      => $userId,
+            'action'       => $action,
+            'description'  => $description,
+            'old_data'     => json_encode($oldData), // لتوسع أفضل
+            'new_data'     => json_encode($newData),
+        ]);
+    }
+    public function createAttachment(Complaint $complaint, array $data)
+    {
+        return $complaint->attachments()->create($data);
+    }
+
+    public function updateComplaintStatus(Complaint $complaint, string $newStatus): Complaint
+    {
+        $complaint->status = $newStatus;
+        $complaint->save();
+        return $complaint;
+    }
+
+    public function getLatestInfoRequest(int $complaintId): ?ComplaintHistory
+    {
+        return ComplaintHistory::where('complaint_id', $complaintId)
+            ->where('action', 'request_more_info')
+            ->latest()
+            ->first();
+    }
+
+    public function getNewForEmployee(int $userId, ?int $entityId)
+    {
+        return Complaint::where('status', 'new') // فقط الجديدة
+            ->where(function ($query) use ($userId, $entityId) {
+                $query->where('assigned_to', $userId) // أسندت إليه
+                    ->orWhere('locked_by', $userId) // قفلها
+                    ->orWhereHas('entity', fn($q) => $q->where('id', $entityId)); // خاصة بقسمه
+            })
+            ->with([
+                'user:id,name', // لجلب اسم المستخدم إذا لزم
+                'entity:id,name'
+            ])
+            ->select(
+                'id',
+                'reference_number',
+                'type',
+                'status',
+                'created_at',
+                'user_id',
+                'entity_id',
+                'location',
+                'description',
+                'updated_at', // ← التعديل هنا: أضف هذه الحقول
+                'locked_by',
+                'locked_at',
+                'assigned_to' // لـ lock_details و assigned_to
+            )
+            ->latest()
+            ->paginate(20); // pagination للأداء
+    }
+
+    public function getAllWithFilters(array $filters = [])
+    {
+        $query = Complaint::with([
+            'user:id,name,email',
+            'entity:id,name',
+            'assignedTo:id,name',
+            'lockedBy:id,name',
+            'attachments:id,complaint_id,file_path,file_name,file_type,file_size,mime_type,created_at',  // أضف جميع الحقول من migration لعرض كامل
+            'history:id,complaint_id,user_id,action,description,old_data,new_data,created_at'  // نفسه
+        ])
+            ->select(
+                'id',
+                'reference_number',
+                'type',
+                'status',
+                'created_at',
+                'entity_id',
+                'assigned_to',
+                'locked_by',
+                'user_id',
+                'location',
+                'description',
+                'updated_at'
+            )
+            ->latest();
+
+        // تطبيق فلاتر
+        if (isset($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+        if (isset($filters['start_date'])) {
+            $query->whereDate('created_at', '>=', $filters['start_date']);
+        }
+        if (isset($filters['end_date'])) {
+            $query->whereDate('created_at', '<=', $filters['end_date']);
+        }
+
+        return $query->paginate(20);
+    }
 }
-
-
-
-

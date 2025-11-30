@@ -18,7 +18,14 @@ class RolesAndPermissionsSeeder extends Seeder
             'update_complaint_status',
             'assign_complaints',
             'requestMoreInfo',
+            'viewAllComplaints',
             'addNote',
+            'complaints.lock',
+            'complaints.unlock',
+            'complaints.assign',
+            'view_complaint_history',
+            'export_complaint_reports',
+            'viewNewComplaints',
 
             // Employee Management
             'create_employee',
@@ -26,17 +33,19 @@ class RolesAndPermissionsSeeder extends Seeder
             'delete_employee',
             'edit_employee_permissions',
             'view_assigned_complaints',
+            'view_employees',
 
             // User Management
             'view_users',
             'update_user',
             'delete_user',
             'block_user',
+            'viewCitizens',
 
             // System
-            'view_system_logs',
-            'view_statistics',
-            'export_reports',
+            'viewSystemPerformance',
+            'exportReports',
+            'viewAdminDashboard',
         ];
 
         foreach ($permissions as $permission)
@@ -57,7 +66,10 @@ class RolesAndPermissionsSeeder extends Seeder
             'complaints.handle',
             'requestMoreInfo',
             'addNote',
-
+            'complaints.lock',
+            'complaints.unlock',
+            'viewNewComplaints',
+            'viewCitizens',
         ]);
 
         $citizen->givePermissionTo([

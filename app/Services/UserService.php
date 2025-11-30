@@ -4,11 +4,13 @@ namespace App\Services;
 
 use App\Repositories\UserRepository;
 use App\Events\UserRegistered;
+use App\Jobs\AuditLogJob;
 use App\Mail\AccountLockedMail;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\JsonResponse;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -125,6 +127,7 @@ class UserService
             ]
         ]);
     }
+
     public function login(array $credentials): JsonResponse
     {
         if (!isset($credentials['email']) || !isset($credentials['password'])) {
@@ -139,27 +142,28 @@ class UserService
             return $lockoutCheck;
         }
 
-        $user = $this->repo->findByEmail($credentials['email']);
-
-        if (!$user || !Hash::check($credentials['password'], $user->password)) {
+        if (!Auth::attempt($credentials)) {
             $this->handleFailedLogin($credentials['email']);
-            $this->auditService->logSecurityEvent('failed_login', ['email' => $credentials['email']]);
+
             return response()->json([
                 'status' => false,
                 'message' => 'Invalid credentials'
             ], 401);
         }
 
-        $this->resetLoginAttempts($credentials['email']);
+        $user = Auth::user();
+        $this->resetLoginAttempts($user->email);
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        // $this->auditService->logAction($user->id, 'user_logged_in');
-
-        $this->auditService->logAction($user->id, 'user_logged_in', [
-            'ip' => request()->ip(),
-            'user_agent' => request()->userAgent()
-        ]);
+        dispatch(new AuditLogJob(
+            $user->id,
+            'user_logged_in',
+            [
+                'ip' => request()->ip(),
+                'user_agent' => request()->userAgent()
+            ]
+        ));
 
         return response()->json([
             'status' => true,
@@ -172,15 +176,20 @@ class UserService
             ]
         ]);
     }
+
     public function logout($user): JsonResponse
     {
         $user->tokens()->delete();
 
-        $this->auditService->logAction($user->id, 'user_logged_out', [
-            'ip' => request()->ip(),
-            'user_agent' => request()->userAgent(),
-            'logout_at' => now()->toDateTimeString()
-        ]);
+        dispatch(new AuditLogJob(
+            $user->id,
+            'user_logged_out',
+            [
+                'ip' => request()->ip(),
+                'user_agent' => request()->userAgent(),
+                'logout_at' => now()->toDateTimeString()
+            ]
+        ));
 
 
         return response()->json([
@@ -221,22 +230,29 @@ class UserService
             $lockoutKey = "account_lockout_" . $email;
             $lockoutUntil = now()->addMinutes($this->lockoutTime);
 
-            // تخزين وقت الحظر
             Cache::put($lockoutKey, $lockoutUntil, $lockoutUntil);
 
-            // إرسال بريد للمستخدم
             try {
                 Mail::to($email)->queue(new AccountLockedMail($lockoutUntil));
             } catch (\Exception $e) {
                 Log::error("Failed to send account locked email: " . $e->getMessage());
             }
 
-            // تسجيل حدث أمني
-            $this->auditService->logSecurityEvent('account_locked', [
-                'email' => $email,
-                'attempts' => $currentAttempts,
-                'locked_until' => $lockoutUntil
-            ]);
+            dispatch(new AuditLogJob(
+                null,
+                'account_locked',
+                [
+                    'email' => $email,
+                    'attempts' => $currentAttempts,
+                    'locked_until' => $lockoutUntil
+                ]
+            ));
+        } else {
+            dispatch(new AuditLogJob(
+                null,
+                'failed_login',
+                ['email' => $email]
+            ));
         }
     }
     private function resetLoginAttempts(string $email): void
@@ -263,5 +279,35 @@ class UserService
                 'entity_id' => $user->entity_id,
             ]
         ], 201);
+    }
+
+    public function getCitizenById(int $id): JsonResponse
+    {
+        $citizen = $this->repo->findCitizenById($id);
+
+        if (!$citizen) {
+            return response()->json([
+                'status' => false,
+                'message' => 'Citizen not found.'
+            ], 404);
+        }
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Citizen details retrieved successfully.',
+            'data' => [
+                'id' => $citizen->id,
+                'name' => $citizen->name,
+                'email' => $citizen->email,
+                'role' => $citizen->getRoleNames()->first()
+            ]
+        ]);
+    }
+
+
+    public function getUsersByType(string $type = 'all', int $perPage = 15)
+    {
+        $currentUser = auth()->user();
+        return $this->repo->getFilteredUsers($type, $perPage, $currentUser);
     }
 }

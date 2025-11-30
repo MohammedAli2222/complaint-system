@@ -14,10 +14,7 @@ class UserPolicy
      */
     public function viewAny(User $user): bool
     {
-        // ليس لديك صلاحية 'view-employees' في ال Seeder، لذا نستخدم منطق عام أو نتأكد من الأدمن
-        // نفترض أن الأدمن لديه كل شيء.
-        // سنستخدم 'view_users' الموجودة في ال Seeder كممثل لعرض القائمة.
-        return $user->hasRole('admin') || $user->can('view_users');
+        return $user->can('view_users');
     }
 
     /**
@@ -60,5 +57,10 @@ class UserPolicy
 
         // الصلاحية المستخدمة: 'delete_employee'
         return $user->hasRole('admin') || $user->can('delete_employee');
+    }
+
+    public function viewCitizen(User $user): bool
+    {
+        return $user->hasRole(['admin', 'employee']) || $user->can('view_users');
     }
 }

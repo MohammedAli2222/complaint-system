@@ -90,4 +90,44 @@ class ComplaintPolicy
     {
         return $user->entity_id === $complaint->entity_id;
     }
+
+    /**
+     * تحديد ما إذا كان المستخدم يستطيع فتح قفل الشكوى (Unlock)
+     */
+    public function unlock(User $user, Complaint $complaint): bool
+    {
+        if ($user->hasRole('admin')) {
+            return true;
+        }
+
+        if ($user->hasRole('employee') && $user->entity_id === $complaint->entity_id) {
+            return $complaint->locked_by === $user->id;
+        }
+
+        return false;
+    }
+
+    /**
+     * تحديد ما إذا كان المستخدم يستطيع الرد على طلب المعلومات الإضافية
+     */
+    public function respondToInfoRequest(User $user, Complaint $complaint): bool
+    {
+        // التأكد من أن المستخدم هو صاحب الشكوى وأن حالة الشكوى تسمح بالرد
+        return $user->id === $complaint->user_id && $complaint->status === 'under_review';
+    }
+
+    public function viewInfoRequest(User $user, Complaint $complaint): bool
+    {
+        return $user->id === $complaint->user_id && $complaint->status === 'under_review';
+    }
+
+    public function viewAllComplaints(User $user): bool
+    {
+        return $user->hasRole('admin') || $user->can('complaints.view-any');
+    }
+
+    public function viewNewComplaints(User $user): bool
+    {
+        return $user->hasRole('employee') || $user->can('view_assigned_complaints');
+    }
 }

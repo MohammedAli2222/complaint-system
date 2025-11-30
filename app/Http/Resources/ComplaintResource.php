@@ -22,17 +22,17 @@ class ComplaintResource extends JsonResource
 
             'lock_details' => [
                 'locked_by' => $this->locked_by,
-                'locked_at' => $this->locked_at ? $this->locked_at->toDateTimeString() : null,
+                'locked_at' => optional($this->locked_at)->toDateTimeString(),
             ],
             'assigned_to' => $this->assigned_to,
 
             'timestamps' => [
-                'created_at' => $this->created_at->toDateTimeString(),
-                'updated_at' => $this->updated_at->toDateTimeString(),
+                'created_at' => optional($this->created_at)->toDateTimeString(),  
+                'updated_at' => optional($this->updated_at)->toDateTimeString(),
             ],
 
             'history' => $this->whenLoaded('history', function () {
-                return $this->history; // يمكن إنشاء Resource خاص لـ History أيضاً
+                return $this->history;
             }),
 
             // تحسين هيكل المرفقات
