@@ -88,17 +88,7 @@ class ComplaintRepository
 
         return $reference;
     }
-    /**
-     * جلب تفاصيل الشكوى مع السجل الزمني (Timeline) للتتبع
-     */
-    /**
-     * جلب تفاصيل الشكوى مع السجل الزمني الكامل والمُهيأ للمواطن
-     * مع تطبيق كل المتطلبات غير الوظيفية
-     */
-    /**
-     * جلب الشكوى للمواطن فقط (مع Timeline كامل)
-     * لا يُسمح لأحد غير صاحب الشكوى برؤيتها أبدًا حتى لو عرف الرقم المرجعي
-     */
+   
     public function getComplaintTimelineForCitizen(string $referenceNumber, int $userId)
     {
         $complaint = Complaint::where('reference_number', $referenceNumber)
@@ -144,7 +134,7 @@ class ComplaintRepository
         return $complaint;
     }
 
-    
+
 
     public function addNote(Complaint $complaint, $note)
     {
