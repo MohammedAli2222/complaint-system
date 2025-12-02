@@ -15,19 +15,7 @@ class AdminUserController extends Controller
         $this->middleware('auth:sanctum');
         $this->service = $service;
     }
-
-    //إرجاع جميع الموظفين مع الجهة والصلاحيات
-    // public function index()
-    // {
-    //     $this->authorize('viewAny', User::class);
-
-    //     $employees = $this->service->listEmployees();
-    //     return response()->json([
-    //         'status' => true,
-    //         'employees' => $employees
-    //     ]);
-    // }
-    public function store(Request $request)
+ public function store(Request $request)
     {
         $this->authorize('create', User::class); // التحقق من صلاحية الإنشاء
 

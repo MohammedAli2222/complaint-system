@@ -22,7 +22,6 @@ class AdminUserService
             $user = $this->repo->create($data);
             $user->assignRole('employee');
 
-            // تعيين الصلاحيات
             if (isset($data['permissions']) && is_array($data['permissions'])) {
                 $user->syncPermissions($data['permissions']);
             }
@@ -54,12 +53,6 @@ class AdminUserService
 
         return $user->load('entity', 'permissions');
     }
-
-
-    // public function listEmployees()
-    // {
-    //     return $this->repo->allEmployeesWithFullData();
-    // }
 
 
     public function deleteEmployee(int $id)

@@ -9,7 +9,6 @@ class AuditService
 {
     public function logAction($userId, $action, $details = null)
     {
-        // 1. تخزين في قاعدة البيانات
         Log::create([
             'user_id' => $userId,
             'action' => $action,
@@ -19,7 +18,6 @@ class AuditService
             'timestamp' => now()
         ]);
 
-        // 2. تخزين في ملف الـ log (للـ debugging)
         LaravelLog::info("User Action: {$action}", [
             'user_id' => $userId,
             'details' => $details,

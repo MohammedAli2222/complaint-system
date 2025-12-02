@@ -18,19 +18,16 @@ class ComplaintRepository
         return Complaint::create($data);
     }
 
-    // البحث برقم المرجع
     public function findByReference(string $ref)
     {
         return Complaint::where('reference_number', $ref)->first();
     }
 
-    // البحث بالـ ID
     public function findById(int $id)
     {
         return Complaint::findOrFail($id);
     }
 
-    // للمواطن: شكاويه فقط
     public function forCitizen(int $userId)
     {
         return Complaint::where('user_id', $userId)
@@ -40,7 +37,6 @@ class ComplaintRepository
             ->get();
     }
 
-    // للموظف: المعينة له أو جهته
     public function forEmployee(int $userId)
     {
         return Complaint::where('assigned_to', $userId)
@@ -50,8 +46,6 @@ class ComplaintRepository
             ->latest()
             ->get();
     }
-
-    // للأدمن: كل الشكاوى مع العلاقات
     public function forAdmin()
     {
         return Complaint::with([
@@ -66,7 +60,6 @@ class ComplaintRepository
             ->latest()
             ->get();
     }
-
     // توليد رقم مرجعي فريد
     public function generateUniqueReference(int $length = 10): string
     {
@@ -76,7 +69,6 @@ class ComplaintRepository
             // 1. UUID v4
             $uuid = Str::uuid()->toString();
 
-            // 2. إزالة الشرطات
             $uniquePart = str_replace('-', '', $uuid);
 
             // 3. تقصير السلسلة
@@ -88,11 +80,10 @@ class ComplaintRepository
 
         return $reference;
     }
-   
     public function getComplaintTimelineForCitizen(string $referenceNumber, int $userId)
     {
         $complaint = Complaint::where('reference_number', $referenceNumber)
-            ->where('user_id', $userId) // أهم شرط أمان — موجود من البداية
+            ->where('user_id', $userId)
             ->with([
                 'entity:id,name',
                 'attachments:id,complaint_id,file_path,file_name,file_type,file_size,created_at',
@@ -126,16 +117,12 @@ class ComplaintRepository
             ])
             ->first();
 
-        // لو ما لقينا شكوى → نرمي 404 برقم مرجعي عام (لا نكشف أي معلومة)
         if (!$complaint) {
             throw new \Illuminate\Database\Eloquent\ModelNotFoundException('الشكوى غير موجودة أو لا تملك صلاحية رؤيتها');
         }
 
         return $complaint;
     }
-
-
-
     public function addNote(Complaint $complaint, $note)
     {
         return complaint_note::create([
@@ -147,7 +134,6 @@ class ComplaintRepository
 
     public function requestMoreInfo(Complaint $complaint, $message)
     {
-        // تخزن الطلب في جدول ملاحظات كنوع "طلب معلومات"
         return complaint_note::create([
             'complaint_id' => $complaint->id,
             'user_id' => auth()->id(),
@@ -155,7 +141,6 @@ class ComplaintRepository
 
         ]);
     }
-
     // نقل handleAttachments هنا للـ Data Abstraction
     public function handleAttachments(Complaint $complaint, array $files, User $user)
     {
@@ -183,7 +168,6 @@ class ComplaintRepository
         }
     }
 
-    // updateComplaintStatus و logComplaintHistory موجودة، لكن أضف JSON encoding إذا لزم للـ old/new_data
     public function logComplaintHistory(int $complaintId, int $userId, string $action, string $description, array $oldData = [], array $newData = [])
     {
         return ComplaintHistory::create([
@@ -191,7 +175,7 @@ class ComplaintRepository
             'user_id'      => $userId,
             'action'       => $action,
             'description'  => $description,
-            'old_data'     => json_encode($oldData), // لتوسع أفضل
+            'old_data'     => json_encode($oldData),
             'new_data'     => json_encode($newData),
         ]);
     }
@@ -199,14 +183,12 @@ class ComplaintRepository
     {
         return $complaint->attachments()->create($data);
     }
-
     public function updateComplaintStatus(Complaint $complaint, string $newStatus): Complaint
     {
         $complaint->status = $newStatus;
         $complaint->save();
         return $complaint;
     }
-
     public function getLatestInfoRequest(int $complaintId): ?ComplaintHistory
     {
         return ComplaintHistory::where('complaint_id', $complaintId)
@@ -214,17 +196,16 @@ class ComplaintRepository
             ->latest()
             ->first();
     }
-
     public function getNewForEmployee(int $userId, ?int $entityId)
     {
-        return Complaint::where('status', 'new') // فقط الجديدة
+        return Complaint::where('status', 'new')
             ->where(function ($query) use ($userId, $entityId) {
-                $query->where('assigned_to', $userId) // أسندت إليه
-                    ->orWhere('locked_by', $userId) // قفلها
-                    ->orWhereHas('entity', fn($q) => $q->where('id', $entityId)); // خاصة بقسمه
+                $query->where('assigned_to', $userId)
+                    ->orWhere('locked_by', $userId)
+                    ->orWhereHas('entity', fn($q) => $q->where('id', $entityId));
             })
             ->with([
-                'user:id,name', // لجلب اسم المستخدم إذا لزم
+                'user:id,name',
                 'entity:id,name'
             ])
             ->select(
@@ -237,15 +218,14 @@ class ComplaintRepository
                 'entity_id',
                 'location',
                 'description',
-                'updated_at', // ← التعديل هنا: أضف هذه الحقول
+                'updated_at',
                 'locked_by',
                 'locked_at',
-                'assigned_to' // لـ lock_details و assigned_to
+                'assigned_to'
             )
             ->latest()
-            ->paginate(20); // pagination للأداء
+            ->paginate(20);
     }
-
     public function getAllWithFilters(array $filters = [])
     {
         $query = Complaint::with([
@@ -272,7 +252,6 @@ class ComplaintRepository
             )
             ->latest();
 
-        // تطبيق فلاتر
         if (isset($filters['status'])) {
             $query->where('status', $filters['status']);
         }

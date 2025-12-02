@@ -6,11 +6,11 @@ namespace App\Services;
 use App\Repositories\ComplaintRepository;
 use App\Events\ComplaintSubmitted;
 use App\Events\ComplaintStatusUpdated;
-use App\Events\ComplaintAssigned;        // ← جديد
+use App\Events\ComplaintAssigned;
 use App\Events\RequestMoreInfo;
 use Illuminate\Http\JsonResponse;
-use App\Models\ComplaintHistory; // تأكد من وجود الموديل
-use App\Mail\ComplaintStatusMail; // استدعاء كلاس الإيميل
+use App\Models\ComplaintHistory;
+use App\Mail\ComplaintStatusMail;
 use App\Models\Complaint;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Http\Request;
@@ -34,12 +34,10 @@ class ComplaintService
         $this->audit = $audit;
     }
 
-    // 1. تقديم شكوى
     public function submit(array $data, $user, ?Request $request = null)
     {
         return DB::transaction(function () use ($data, $user, $request) {
 
-            // 1. توليد رقم مرجعي وإنشاء الشكوى
             $ref = $this->repo->generateUniqueReference();
 
             $complaint = $this->repo->create([
@@ -55,12 +53,10 @@ class ComplaintService
             if ($request && $request->hasFile('files')) {
                 $files = $request->file('files');
 
-                // إذا كان ملف واحد فقط
                 if ($files instanceof UploadedFile) {
                     $this->handleAttachments($complaint, [$files], $user);
                 }
 
-                // إذا كانت مجموعة ملفات
                 if (is_array($files)) {
                     foreach ($files as $file) {
                         if ($file instanceof UploadedFile && $file->isValid()) {
@@ -94,15 +90,12 @@ class ComplaintService
                 continue;
             }
 
-            // 📂 تحديد مجلد التخزين داخل storage/app/public/complaints/{ref}
             $storagePath = "complaints/{$complaint->reference_number}";
 
-            // 🗂️ رفع الملف باستخدام Storage facade
             $path = Storage::disk('public')->putFile($storagePath, $file);
 
-            // 📝 حفظ بيانات المرفق في قاعدة البيانات
             $complaint->attachments()->create([
-                'file_path'     => $path, // المسار داخل التخزين
+                'file_path'     => $path,
                 'file_name'     => $file->getClientOriginalName(),
                 'file_type'     => $file->extension(),
                 'file_size'     => $file->getSize(),
@@ -145,7 +138,7 @@ class ComplaintService
             return $complaint;
         });
     }
-    // 4. إلغاء قفل الشكوى (إلغاء الحجز) ← جديد
+    // 4. إلغاء قفل الشكوى (إلغاء الحجز)
     public function unlock(int $id, $user): void
     {
         DB::transaction(function () use ($id, $user) {
@@ -153,20 +146,16 @@ class ComplaintService
             $complaint = $this->repo->findById($id);
             $userRole = $user->getRoleNames()->first();
 
-            // 1. التحقق من صلاحية الجهة الحكومية (مهم جداً)
             if ($userRole !== 'admin' && $complaint->entity_id !== $user->entity_id) {
                 throw new \Exception('لا تملك صلاحية لفتح قفل شكاوى لا تتبع لجهتك الحكومية.', 403);
             }
 
-            // 2. التحقق من أن الموظف الحالي هو من قام بالقفل أو أنه مشرف
             if ($userRole !== 'admin' && $complaint->locked_by !== $user->id) {
                 $lockedByName = $complaint->lockedBy ? $complaint->lockedBy->name : 'موظف آخر';
                 throw new \Exception("لا يمكن فتح القفل. الشكوى مقفولة بواسطة {$lockedByName}، ويجب أن يكون الموظف القافل هو من يفتحها.", 403);
             }
 
-            // 3. تطبيق فتح القفل
             if ($complaint->locked_by === null) {
-                // إذا لم تكن مقفولة، نخرج دون إثارة خطأ، أو يمكنك إرجاع رسالة للمستخدم
                 return;
             }
 
@@ -175,14 +164,13 @@ class ComplaintService
                 'locked_at' => null,
             ]);
 
-            // تسجيل تدقيق فتح القفل (AOP)
             $this->audit->logSecurityEvent('complaint_unlocked', [
                 'complaint_id' => $id,
                 'user_id' => $user->id
             ]);
         });
     }
-    // 5. تعيين موظف للشكوى ← جديد
+    // 5. تعيين موظف للشكوى
     public function assign($complaint, int $employeeId, $assignerUser)
     {
         return DB::transaction(function () use ($complaint, $employeeId, $assignerUser) {
@@ -197,7 +185,7 @@ class ComplaintService
 
             ComplaintHistory::create([
                 'complaint_id' => $complaint->id,
-                'user_id'      => $assignerUser->id, // من قام بالتعيين
+                'user_id'      => $assignerUser->id,
                 'action'       => 'complaint_assigned',
                 'description'  => "Complaint assigned to employee ID: {$employeeId} by Admin/Supervisor {$assignerUser->name}.",
                 'old_data'     => ['assigned_to' => $oldEmployeeId],
@@ -218,7 +206,6 @@ class ComplaintService
             $complaint = $this->repo->findById($id);
             $oldStatus = $complaint->status;
 
-            // 1. ⚠️ التحكم في التزامن (Concurrency Control)
             if (!$user->hasRole('admin') && $complaint->locked_by !== $user->id) {
                 if ($complaint->locked_by === null) {
                     throw new \Exception('Complaint must be locked first before updating its status.');
@@ -226,11 +213,8 @@ class ComplaintService
                 throw new \Exception('Complaint is locked by another user and cannot be modified.');
             }
 
-            // 2. تحديث بيانات الشكوى
             $complaint->update(['status' => $newStatus]);
 
-            // 3. ✅ فك القفل التلقائي (Auto-Unlock)
-            // إذا كانت الحالة النهائية هي 'done' أو 'rejected'
             if (in_array($newStatus, ['done', 'rejected'])) {
                 $complaint->update([
                     'locked_by' => null,
@@ -238,7 +222,6 @@ class ComplaintService
                 ]);
             }
 
-            // 4. التسجيل في سجل التدقيق (Audit Log)
             $this->audit->logAction($user->id, 'complaint.status_updated', [
                 'complaint_id' => $complaint->id,
                 'old_status' => $oldStatus,
@@ -267,19 +250,13 @@ class ComplaintService
             return $complaint;
         });
     }
-
-
     public function trackComplaint(string $ref, User $user)
     {
         return Cache::remember("complaint_timeline_{$ref}_{$user->id}", now()->addMinutes(5), function () use ($ref, $user) {
 
-            // جلب الشكوى مع التأكد أنها ملك المستخدم فقط (أمان كامل)
             $complaint = $this->repo->getComplaintTimelineForCitizen($ref, $user->id);
-
-            // بناء السجل الزمني (Timeline) بأبسط وأوضح شكل
             $timeline = collect();
 
-            // أول حدث: تقديم الشكوى
             $timeline->push([
                 'date'        => $complaint->created_at->translatedFormat('Y/m/d - h:i A'),
                 'actor'       => 'أنت',
@@ -288,7 +265,6 @@ class ComplaintService
                 'description' => 'تم تقديم الشكوى بنجاح وإرسالها إلى الجهة المختصة.',
             ]);
 
-            // باقي الأحداث من جدول complaint_history
             foreach ($complaint->history as $event) {
                 $actor = $event->user ? $event->user->name : 'النظام';
                 $actorType = ($event->user_id === $complaint->user_id) ? 'أنت' : 'موظف';
@@ -302,10 +278,8 @@ class ComplaintService
                 ]);
             }
 
-            // ترتيب زمني تصاعدي (من الأقدم إلى الأحدث)
             $timeline = $timeline->values();
 
-            // الرد النهائي للمواطن
             return [
                 'reference_number'       => $complaint->reference_number,
                 'type'                   => $complaint->type,
@@ -323,14 +297,11 @@ class ComplaintService
                 'description'            => $complaint->description,
                 'submitted_at'           => $complaint->created_at->translatedFormat('l، j F Y - h:i A'),
 
-                // متطلب عدم التضارب في المعالجة (المتطلب غير الوظيفي رقم 1)
                 'is_being_processed'     => !is_null($complaint->locked_by),
 
-                // متطلب طلب معلومات إضافية
                 'awaiting_your_response' => $complaint->status === 'under_review',
                 'latest_request_message' => $this->getLatestInfoRequestMessage($complaint),
 
-                // المرفقات
                 'attachments' => $complaint->attachments->map(function ($attachment) {
                     return [
                         'name' => $attachment->file_name ?? 'ملف مرفق',
@@ -338,12 +309,10 @@ class ComplaintService
                     ];
                 })->values(),
 
-                // السجل الزمني الكامل (المتطلب غير الوظيفي رقم 2 - Versioning)
                 'timeline' => $timeline->all(),
             ];
         });
     }
-
     // 7. Dashboard
     public function getDashboard($user)
     {
@@ -354,25 +323,20 @@ class ComplaintService
             default => collect()
         };
     }
-
-    // 8. Audit Log (محدث)
     public function log($userId, $action, $details = null)
     {
         $this->audit->logAction($userId, $action, $details);
     }
-
     public function addNote(Complaint $complaint, $note)
     {
         return $this->repo->addNote($complaint, $note);
     }
-
     public function requestMoreInfo(Complaint $complaint, string $message)
     {
         return DB::transaction(function () use ($complaint, $message) {
             $oldStatus = $complaint->status;
             $newStatus = 'under_review';
 
-            // 1. تحديث حالة الشكوى
             $complaint->update(['status' => $newStatus]);
 
             ComplaintHistory::create([
@@ -395,14 +359,12 @@ class ComplaintService
             return true;
         });
     }
-
     // التابع الخاص برد المواطن على طلب المعلومات الإضافية
     public function citizenRespondToInfoRequest(Complaint $complaint, ?Request $request = null)
     {
         return DB::transaction(function () use ($complaint, $request) {
             $user = auth()->user();
 
-            // 1. Business Validation (أمان وتحقق)
             if ($complaint->user_id !== $user->id) {
                 throw new \Exception('لا تملك صلاحية للرد على هذه الشكوى.', 403);
             }
@@ -410,26 +372,20 @@ class ComplaintService
                 throw new \Exception('لا يمكن الرد على شكوى حالتها ليست "قيد المراجعة".', 400);
             }
 
-            // 2. تحقق من حدود المرفقات (غير وظيفية: منع overload)
             if ($request && $request->hasFile('files') && $complaint->attachments()->count() >= 10) {
                 throw new \Exception('تم تجاوز الحد الأقصى لعدد المرفقات (10).', 400);
             }
 
-            // 3. معالجة المرفقات (استخدم Queue للأداء إذا كانت الملفات كبيرة)
             if ($request && $request->hasFile('files')) {
                 $files = is_array($request->file('files')) ? $request->file('files') : [$request->file('files')];
-                // Queue job للرفع: dispatch(new ProcessAttachmentsJob($complaint, $files, $user));
-                // لكن هنا نحافظ على synchronous للبساطة، أو أضف Queue إذا لزم
-                $this->handleAttachments($complaint, $files, $user); // انقل هذه إلى Repository إذا أمكن
+                $this->handleAttachments($complaint, $files, $user);
             }
 
-            // 4. تحديث الحالة
             $oldStatus = $complaint->status;
             $newStatus = 'processing';
             $notes = $request?->input('notes');
             $this->repo->updateComplaintStatus($complaint, $newStatus);
 
-            // 5. تسجيل التاريخ (شفافية)
             $description = "المواطن قام بالرد على طلب معلومات إضافية." . ($notes ? " الملاحظة: " . $notes : '');
             $this->repo->logComplaintHistory(
                 $complaint->id,
@@ -440,7 +396,6 @@ class ComplaintService
                 ['status' => $newStatus, 'notes' => $notes, 'attachments_added' => $request?->hasFile('files') ? count($request->file('files')) : 0]
             );
 
-            // 6. Audit Log مفصل (تتبع)
             $this->audit->logAction($user->id, 'citizen.info_responded', [
                 'complaint_id' => $complaint->id,
                 'ip' => $request?->ip(),
@@ -452,10 +407,8 @@ class ComplaintService
             return $complaint;
         });
     }
-
     public function getLatestInfoRequestMessage(Complaint $complaint): ?string
     {
-        // جلب أحدث سجل طلب معلومات
         $history = $this->repo->getLatestInfoRequest($complaint->id);
         return $history ? $history->description : null;
     }

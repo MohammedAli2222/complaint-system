@@ -19,7 +19,6 @@ class ComplaintHistory extends Model
         'new_data'
     ];
 
-    // 🛠️ هام: تحديد الأعمدة التي يجب فك تشفيرها كـ JSON
     protected $casts = [
         'old_data' => 'array',
         'new_data' => 'array',

@@ -9,7 +9,6 @@ use App\Mail\AccountLockedMail;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Http\JsonResponse;
-use Carbon\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -20,7 +19,7 @@ class UserService
     protected AuditService $auditService;
     protected int $otpTTL = 10;
     protected int $maxLoginAttempts = 5;
-    protected int $lockoutTime = 30; // دقائق
+    protected int $lockoutTime = 30;
 
     public function __construct(UserRepository $repo, AuditService $auditService)
     {
@@ -36,7 +35,6 @@ class UserService
             ], 422);
         }
 
-        // تحقق من صيغة الإيميل
         if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
             return response()->json([
                 'status' => false,
@@ -127,7 +125,6 @@ class UserService
             ]
         ]);
     }
-
     public function login(array $credentials): JsonResponse
     {
         if (!isset($credentials['email']) || !isset($credentials['password'])) {
@@ -176,7 +173,6 @@ class UserService
             ]
         ]);
     }
-
     public function logout($user): JsonResponse
     {
         $user->tokens()->delete();
@@ -260,8 +256,6 @@ class UserService
         Cache::forget("login_attempts_" . $email);
         Cache::forget("account_lockout_" . $email);
     }
-
-
     public function createEmployee(array $data): JsonResponse
     {
         $data['password'] = Hash::make($data['password']);
@@ -280,7 +274,6 @@ class UserService
             ]
         ], 201);
     }
-
     public function getCitizenById(int $id): JsonResponse
     {
         $citizen = $this->repo->findCitizenById($id);
@@ -303,8 +296,6 @@ class UserService
             ]
         ]);
     }
-
-
     public function getUsersByType(string $type = 'all', int $perPage = 15)
     {
         $currentUser = auth()->user();

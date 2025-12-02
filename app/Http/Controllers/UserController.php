@@ -26,7 +26,6 @@ class UserController extends Controller
 
         return $this->service->register($request->all());
     }
-
     public function verifyOtp(Request $request)
     {
         $request->validate([
@@ -39,7 +38,6 @@ class UserController extends Controller
             $request->input('otp')
         );
     }
-
     public function login(Request $request)
     {
         $request->validate([
@@ -49,7 +47,6 @@ class UserController extends Controller
 
         return $this->service->login($request->all());
     }
-
     public function logout(Request $request)
     {
         return $this->service->logout($request->user());
@@ -60,7 +57,6 @@ class UserController extends Controller
 
         return $this->service->getCitizenById($id);
     }
-
     public function index(Request $request)
     {
         $this->authorize('viewAny', User::class);
