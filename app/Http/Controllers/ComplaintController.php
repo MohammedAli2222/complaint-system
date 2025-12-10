@@ -110,27 +110,27 @@ class ComplaintController extends Controller
 
     // تتبع الشكوى
     public function track($ref, Request $request)
-{
-    try {
-        $data = $this->service->trackComplaint($ref, $request->user());
+    {
+        try {
+            $data = $this->service->trackComplaint($ref, $request->user());
 
-        return response()->json([
-            'status' => true,
-            'message' => 'تم جلب تفاصيل الشكوى بنجاح',
-            'data' => $data
-        ]);
-    } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-        return response()->json([
-            'status' => false,
-            'message' => 'الشكوى غير موجودة أو لا تملك صلاحية رؤيتها'
-        ], 404);
-    } catch (\Exception $e) {
-        return response()->json([
-            'status' => false,
-            'message' => 'حدث خطأ غير متوقع'
-        ], 500);
+            return response()->json([
+                'status' => true,
+                'message' => 'تم جلب تفاصيل الشكوى بنجاح',
+                'data' => $data
+            ]);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'الشكوى غير موجودة أو لا تملك صلاحية رؤيتها'
+            ], 404);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => false,
+                'message' => 'حدث خطأ غير متوقع'
+            ], 500);
+        }
     }
-}
     // تحديث حالة الشكوى
     public function updateStatus($id, Request $request): JsonResponse
     {
@@ -310,6 +310,19 @@ class ComplaintController extends Controller
             'status' => true,
             'message' => 'الشكاوى الجديدة الخاصة بك تم جلبها بنجاح.',
             'data' => ComplaintResource::collection($complaints)
+        ]);
+    }
+
+    public function getEntities()
+    {
+        // لا يوجد منطق عمل أو تفاعل مباشر مع قاعدة البيانات هنا
+        $entities = $this->service->getEntitiesForDropdown();
+
+        // إرجاع الاستجابة بتنسيق JSON
+        return response()->json([
+            'status' => true,
+            'message' => 'Entities retrieved successfully for dropdown.',
+            'data' => $entities,
         ]);
     }
 }

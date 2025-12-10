@@ -5,6 +5,7 @@ namespace App\Repositories;
 use App\Models\Complaint;
 use App\Models\complaint_note;
 use App\Models\ComplaintHistory;
+use App\Models\Entity;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -263,5 +264,13 @@ class ComplaintRepository
         }
 
         return $query->paginate(20);
+    }
+
+    public function getEntitiesForDropdown()
+    {
+        return Entity::select('id', 'name')
+            // ->where('is_active', true)
+            ->orderBy('name')
+            ->get();
     }
 }

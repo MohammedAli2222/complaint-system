@@ -28,7 +28,7 @@ Route::post('/register', [UserController::class, 'register'])->middleware('throt
 Route::post('/verify-otp', [UserController::class, 'verifyOtp'])->middleware('throttle:5,1');
 Route::post('/login', [UserController::class, 'login']);
 
-
+Route::get('/dropdown/entities', [ComplaintController::class, 'getEntities']);
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/logout', [UserController::class, 'logout']);
     //Get Citizen Info By ID

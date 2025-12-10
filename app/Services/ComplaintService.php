@@ -426,4 +426,9 @@ class ComplaintService
     {
         return $this->repo->getAllWithFilters($filters);
     }
+
+    public function getEntitiesForDropdown()
+    {
+        return $this->repo->getEntitiesForDropdown();
+    }
 }
