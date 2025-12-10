@@ -33,7 +33,7 @@ class ComplaintService
         $this->repo = $repo;
         $this->audit = $audit;
     }
-
+    //1. تقديم شكوى
     public function submit(array $data, $user, ?Request $request = null)
     {
         return DB::transaction(function () use ($data, $user, $request) {
@@ -78,6 +78,7 @@ class ComplaintService
             return $complaint;
         });
     }
+    //معالجة الملفات
     protected function handleAttachments($complaint, array $files, $user): void
     {
         /** @var UploadedFile $file */
@@ -250,6 +251,7 @@ class ComplaintService
             return $complaint;
         });
     }
+    //تتبع الشكوى
     public function trackComplaint(string $ref, User $user)
     {
         return Cache::remember("complaint_timeline_{$ref}_{$user->id}", now()->addMinutes(5), function () use ($ref, $user) {
@@ -327,10 +329,12 @@ class ComplaintService
     {
         $this->audit->logAction($userId, $action, $details);
     }
+    //إضافة ملاحظة على الشكوى
     public function addNote(Complaint $complaint, $note)
     {
         return $this->repo->addNote($complaint, $note);
     }
+    //طلب معلومات اضافية من المستخدم
     public function requestMoreInfo(Complaint $complaint, string $message)
     {
         return DB::transaction(function () use ($complaint, $message) {
@@ -359,7 +363,7 @@ class ComplaintService
             return true;
         });
     }
-    // التابع الخاص برد المواطن على طلب المعلومات الإضافية
+    // رد المواطن على طلب المعلومات الإضافية
     public function citizenRespondToInfoRequest(Complaint $complaint, ?Request $request = null)
     {
         return DB::transaction(function () use ($complaint, $request) {
@@ -412,12 +416,12 @@ class ComplaintService
         $history = $this->repo->getLatestInfoRequest($complaint->id);
         return $history ? $history->description : null;
     }
-
+    //إرجاع الشكاوى الجديدة لموظف معين في قسم معين
     public function getEmployeeNewComplaints(User $user)
     {
         return $this->repo->getNewForEmployee($user->id, $user->entity_id);
     }
-
+    //إرجاع كل الشكاوى
     public function getAllComplaints(array $filters = [])
     {
         return $this->repo->getAllWithFilters($filters);

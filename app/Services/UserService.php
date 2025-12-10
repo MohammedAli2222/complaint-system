@@ -149,6 +149,7 @@ class UserService
         }
 
         $user = Auth::user();
+        $roleId = $user->roles()->first()?->id;
         $this->resetLoginAttempts($user->email);
 
         $token = $user->createToken('auth_token')->plainTextToken;
@@ -169,7 +170,9 @@ class UserService
             'user' => [
                 'id' => $user->id,
                 'name' => $user->name,
-                'email' => $user->email
+                'email' => $user->email,
+                'role_id' => $roleId,
+
             ]
         ]);
     }

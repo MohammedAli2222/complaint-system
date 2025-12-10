@@ -21,8 +21,8 @@ class UserSeeder extends Seeder
             ['name' => 'Employee 2', 'email' => 'employee2@example.com', 'role' => 'employee', 'entity_id' => 2],
         ];
 
-        // إضافة 98 مواطنًا تلقائيًا
-        for ($i = 1; $i <= 98; $i++) {
+        // إضافة 48 مواطنًا تلقائيًا
+        for ($i = 1; $i <= 47; $i++) {
             $usersData[] = [
                 'name' => "Citizen $i",
                 'email' => "citizen$i@example.com",
