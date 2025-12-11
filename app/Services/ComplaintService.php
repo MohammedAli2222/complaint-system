@@ -109,6 +109,11 @@ class ComplaintService
     {
         return $this->repo->findByReference($ref);
     }
+
+    public function getComplaintDetailsForEmployee(int $complaintId): Complaint
+    {
+        return $this->repo->getComplaintDetailsForEmployee($complaintId);
+    }
     // 3. قفل الشكوى
     public function lock(int $id, $user)
     {

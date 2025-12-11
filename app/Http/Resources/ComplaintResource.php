@@ -50,7 +50,6 @@ class ComplaintResource extends JsonResource
             'lock_details' => [
                 'is_locked' => !is_null($this->locked_by),
 
-                // بيانات الموظف الذي قام بالقفل
                 'locked_by' => $this->whenLoaded('lockedBy', function () {
                     return $this->lockedBy ? [
                         'id' => $this->lockedBy->id,

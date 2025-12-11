@@ -53,16 +53,23 @@ class ComplaintController extends Controller
     // عرض شكوى
     public function show(string $ref, Request $request)
     {
-        $complaint = Complaint::where('reference_number', $ref)
-            ->with('history', 'attachments')
-            ->firstOrFail();
+        $complaint = $this->service->getByReference($ref);
+
+        if (!$complaint) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'الشكوى غير موجودة أو الرقم المرجعي غير صحيح.'
+            ], 404);
+        }
 
         $this->authorize('view', $complaint);
 
+        $complaint = $this->service->getComplaintDetailsForEmployee($complaint->id);
+
         return response()->json([
-            'status' => true,
-            'message' => 'Complaint details retrieved successfully.',
-            'data' => new ComplaintResource($complaint)
+            'status'  => true,
+            'message' => 'تم جلب تفاصيل الشكوى بنجاح.',
+            'data'    => new ComplaintResource($complaint)
         ]);
     }
 

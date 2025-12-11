@@ -18,10 +18,23 @@ class ComplaintRepository
     {
         return Complaint::create($data);
     }
-
+    //show Complaint by reference number
     public function findByReference(string $ref)
     {
         return Complaint::where('reference_number', $ref)->first();
+    }
+
+    public function getComplaintDetailsForEmployee(int $complaintId): Complaint
+    {
+        return Complaint::with([
+            'user:id,name,email',
+            'entity:id,name',
+            'assignedTo:id,name',
+            'lockedBy:id,name',
+            'history.user:id,name',
+            'attachments'
+        ])
+            ->findOrFail($complaintId);
     }
 
     public function findById(int $id)
@@ -265,7 +278,6 @@ class ComplaintRepository
 
         return $query->paginate(20);
     }
-
     public function getEntitiesForDropdown()
     {
         return Entity::select('id', 'name')
