@@ -11,6 +11,7 @@ class RolesAndPermissionsSeeder extends Seeder
     public function run()
     {
         $permissions = [
+            
             // Complaints
             'complaints.view-any',
             'complaints.view',

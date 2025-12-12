@@ -4,12 +4,12 @@ namespace App\Repositories;
 
 use App\Models\Complaint;
 use App\Models\complaint_note;
-use App\Models\ComplaintHistory;
 use App\Models\Entity;
 use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use OwenIt\Auditing\Models\Audit;
 
 class ComplaintRepository
 {
@@ -31,7 +31,7 @@ class ComplaintRepository
             'entity:id,name',
             'assignedTo:id,name',
             'lockedBy:id,name',
-            'history.user:id,name',
+            'audits', // تغيير إلى audits بدلاً من history
             'attachments'
         ])
             ->findOrFail($complaintId);
@@ -68,7 +68,7 @@ class ComplaintRepository
             'assignedTo:id,name',
             'lockedBy:id,name',
             'attachments:id,type',
-            'history:id,old_status,new_status,changed_by,notes,created_at'
+            'audits:id,auditable_id,event,old_values,new_values,created_at,user_id' // تغيير إلى audits
         ])
             ->select('id', 'reference_number', 'type', 'status', 'created_at', 'entity_id', 'assigned_to', 'locked_by')
             ->latest()
@@ -101,18 +101,16 @@ class ComplaintRepository
             ->with([
                 'entity:id,name',
                 'attachments:id,complaint_id,file_path,file_name,file_type,file_size,created_at',
-                'history' => function ($query) {
+                'audits' => function ($query) { // تغيير إلى audits
                     $query->select(
                         'id',
-                        'complaint_id',
-                        'action',
-                        'description',
+                        'auditable_id',
+                        'event',
+                        'old_values',
+                        'new_values',
                         'created_at',
-                        'user_id',
-                        'old_data',
-                        'new_data'
+                        'user_id'
                     )
-                        ->with('user:id,name')
                         ->orderBy('created_at', 'asc');
                 }
             ])
@@ -137,6 +135,7 @@ class ComplaintRepository
 
         return $complaint;
     }
+
     public function addNote(Complaint $complaint, $note)
     {
         return complaint_note::create([
@@ -146,16 +145,6 @@ class ComplaintRepository
         ]);
     }
 
-    public function requestMoreInfo(Complaint $complaint, $message)
-    {
-        return complaint_note::create([
-            'complaint_id' => $complaint->id,
-            'user_id' => auth()->id(),
-            'note' => "طلب معلومات إضافية: " . $message,
-
-        ]);
-    }
-    // نقل handleAttachments هنا للـ Data Abstraction
     public function handleAttachments(Complaint $complaint, array $files, User $user)
     {
         foreach ($files as $file) {
@@ -182,17 +171,6 @@ class ComplaintRepository
         }
     }
 
-    public function logComplaintHistory(int $complaintId, int $userId, string $action, string $description, array $oldData = [], array $newData = [])
-    {
-        return ComplaintHistory::create([
-            'complaint_id' => $complaintId,
-            'user_id'      => $userId,
-            'action'       => $action,
-            'description'  => $description,
-            'old_data'     => json_encode($oldData),
-            'new_data'     => json_encode($newData),
-        ]);
-    }
     public function createAttachment(Complaint $complaint, array $data)
     {
         return $complaint->attachments()->create($data);
@@ -203,10 +181,11 @@ class ComplaintRepository
         $complaint->save();
         return $complaint;
     }
-    public function getLatestInfoRequest(int $complaintId): ?ComplaintHistory
+    public function getLatestInfoRequest(int $complaintId): ?object
     {
-        return ComplaintHistory::where('complaint_id', $complaintId)
-            ->where('action', 'request_more_info')
+        return Audit::where('auditable_id', $complaintId)
+            ->where('auditable_type', Complaint::class)
+            ->where('event', 'request_more_info')
             ->latest()
             ->first();
     }
@@ -248,7 +227,7 @@ class ComplaintRepository
             'assignedTo:id,name',
             'lockedBy:id,name',
             'attachments:id,complaint_id,file_path,file_name,file_type,file_size,mime_type,created_at',  // أضف جميع الحقول من migration لعرض كامل
-            'history:id,complaint_id,user_id,action,description,old_data,new_data,created_at'  // نفسه
+            'audits:id,auditable_id,event,old_values,new_values,created_at,user_id'  // تغيير إلى audits
         ])
             ->select(
                 'id',

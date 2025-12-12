@@ -1,13 +1,10 @@
 <?php
 
-use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AdminUserController;
 use App\Http\Controllers\ComplaintController;
-use App\Http\Controllers\LogController;
 use App\Http\Controllers\UserController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use Termwind\Components\Raw;
 
 /*
 |--------------------------------------------------------------------------
@@ -59,7 +56,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     // مسارات خاصة بالموظف
     Route::middleware(['role:employee'])->group(function () {
-        Route::post('/complaints/{id}/unlock', [ComplaintController::class, 'unlock']);
+        Route::get('/complaints/{id}/unlock', [ComplaintController::class, 'unlock']);
     });
 
     // مسارات خاصة بالمشرف

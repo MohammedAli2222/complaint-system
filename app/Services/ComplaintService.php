@@ -8,8 +8,6 @@ use App\Events\ComplaintSubmitted;
 use App\Events\ComplaintStatusUpdated;
 use App\Events\ComplaintAssigned;
 use App\Events\RequestMoreInfo;
-use Illuminate\Http\JsonResponse;
-use App\Models\ComplaintHistory;
 use App\Mail\ComplaintStatusMail;
 use App\Models\Complaint;
 use Illuminate\Support\Facades\Mail;
@@ -22,7 +20,6 @@ use App\Events\CitizenResponded;
 use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 
-
 class ComplaintService
 {
     protected ComplaintRepository $repo;
@@ -33,7 +30,7 @@ class ComplaintService
         $this->repo = $repo;
         $this->audit = $audit;
     }
-    //1. تقديم شكوى
+
     public function submit(array $data, $user, ?Request $request = null)
     {
         return DB::transaction(function () use ($data, $user, $request) {
@@ -66,8 +63,6 @@ class ComplaintService
                 }
             }
 
-
-
             event(new ComplaintSubmitted($complaint));
             $this->log($user->id, 'complaint_submitted', [
                 'ref' => $ref,
@@ -78,7 +73,7 @@ class ComplaintService
             return $complaint;
         });
     }
-    //معالجة الملفات
+
     protected function handleAttachments($complaint, array $files, $user): void
     {
         /** @var UploadedFile $file */
@@ -104,7 +99,7 @@ class ComplaintService
             ]);
         }
     }
-    // 2. عرض شكوى
+
     public function getByReference(string $ref)
     {
         return $this->repo->findByReference($ref);
@@ -114,7 +109,7 @@ class ComplaintService
     {
         return $this->repo->getComplaintDetailsForEmployee($complaintId);
     }
-    // 3. قفل الشكوى
+
     public function lock(int $id, $user)
     {
         return DB::transaction(function () use ($id, $user) {
@@ -134,17 +129,10 @@ class ComplaintService
                 'locked_by' => $user->id,
             ]);
 
-            ComplaintHistory::create([
-                'complaint_id' => $complaint->id,
-                'user_id'      => $user->id,
-                'action'       => 'complaint_locked',
-                'description'  => "Complaint locked by {$user->name} to start processing.",
-            ]);
-
             return $complaint;
         });
     }
-    // 4. إلغاء قفل الشكوى (إلغاء الحجز)
+
     public function unlock(int $id, $user): void
     {
         DB::transaction(function () use ($id, $user) {
@@ -176,7 +164,7 @@ class ComplaintService
             ]);
         });
     }
-    // 5. تعيين موظف للشكوى
+
     public function assign($complaint, int $employeeId, $assignerUser)
     {
         return DB::transaction(function () use ($complaint, $employeeId, $assignerUser) {
@@ -189,23 +177,12 @@ class ComplaintService
                 'new_employee_id' => $employeeId,
             ]);
 
-            ComplaintHistory::create([
-                'complaint_id' => $complaint->id,
-                'user_id'      => $assignerUser->id,
-                'action'       => 'complaint_assigned',
-                'description'  => "Complaint assigned to employee ID: {$employeeId} by Admin/Supervisor {$assignerUser->name}.",
-                'old_data'     => ['assigned_to' => $oldEmployeeId],
-                'new_data'     => ['assigned_to' => $employeeId],
-            ]);
-
             event(new ComplaintAssigned($complaint, $employeeId));
 
             return $complaint;
         });
     }
-    /**
-     * تحديث حالة الشكوى (يستخدمه الموظف/المشرف)
-     */
+
     public function updateStatus(int $id, string $newStatus, ?string $notes, $user)
     {
         return DB::transaction(function () use ($id, $newStatus, $notes, $user) {
@@ -234,15 +211,6 @@ class ComplaintService
                 'new_status' => $newStatus,
             ]);
 
-            ComplaintHistory::create([
-                'complaint_id' => $complaint->id,
-                'user_id'      => $user->id,
-                'action'       => 'status_update',
-                'description'  => "Status changed from {$oldStatus} to {$newStatus}." . ($notes ? " Notes: {$notes}" : ''),
-                'old_data'     => ['status' => $oldStatus],
-                'new_data'     => ['status' => $newStatus, 'notes' => $notes],
-            ]);
-
             event(new ComplaintStatusUpdated($complaint));
             if ($complaint->user && filter_var($complaint->user->email, FILTER_VALIDATE_EMAIL)) {
                 try {
@@ -256,7 +224,7 @@ class ComplaintService
             return $complaint;
         });
     }
-    //تتبع الشكوى
+
     public function trackComplaint(string $ref, User $user)
     {
         return Cache::remember("complaint_timeline_{$ref}_{$user->id}", now()->addMinutes(5), function () use ($ref, $user) {
@@ -272,16 +240,18 @@ class ComplaintService
                 'description' => 'تم تقديم الشكوى بنجاح وإرسالها إلى الجهة المختصة.',
             ]);
 
-            foreach ($complaint->history as $event) {
-                $actor = $event->user ? $event->user->name : 'النظام';
-                $actorType = ($event->user_id === $complaint->user_id) ? 'أنت' : 'موظف';
+            foreach ($complaint->audits as $audit) {
+                $actor = User::find($audit->user_id)?->name ?? 'النظام';
+                $actorType = ($audit->user_id === $complaint->user_id) ? 'أنت' : 'موظف';
+
+                $description = $this->generateAuditDescriptionForTimeline($audit, $complaint);
 
                 $timeline->push([
-                    'date'        => $event->created_at->translatedFormat('Y/m/d - h:i A'),
+                    'date'        => $audit->created_at->translatedFormat('Y/m/d - h:i A'),
                     'actor'       => $actor,
                     'actor_type'  => $actorType,
-                    'action'      => $event->action,
-                    'description' => $event->description,
+                    'action'      => ucfirst($audit->event),
+                    'description' => $description,
                 ]);
             }
 
@@ -303,24 +273,51 @@ class ComplaintService
                 'location'               => $complaint->location ?? 'غير محدد',
                 'description'            => $complaint->description,
                 'submitted_at'           => $complaint->created_at->translatedFormat('l، j F Y - h:i A'),
-
                 'is_being_processed'     => !is_null($complaint->locked_by),
-
                 'awaiting_your_response' => $complaint->status === 'under_review',
                 'latest_request_message' => $this->getLatestInfoRequestMessage($complaint),
-
-                'attachments' => $complaint->attachments->map(function ($attachment) {
-                    return [
-                        'name' => $attachment->file_name ?? 'ملف مرفق',
-                        'url'  => Storage::url($attachment->file_path),
-                    ];
-                })->values(),
-
-                'timeline' => $timeline->all(),
+                'attachments'            => $complaint->attachments->map(fn($a) => [
+                    'name' => $a->file_name ?? 'ملف مرفق',
+                    'url'  => Storage::url($a->file_path),
+                ])->values(),
+                'timeline'               => $timeline->all(),
             ];
         });
     }
-    // 7. Dashboard
+
+    private function generateAuditDescriptionForTimeline($audit, $complaint)
+    {
+        return match ($audit->event) {
+            'created'   => 'تم تقديم الشكوى',
+            'updated'   => $this->describeUpdatedEvent($audit),
+            default     => ucfirst($audit->event),
+        };
+    }
+
+    private function describeUpdatedEvent($audit)
+    {
+        if (isset($audit->new_values['locked_by']) && $audit->new_values['locked_by'] !== null) {
+            return 'تم قفل الشكوى لبدء المعالجة';
+        } elseif (isset($audit->new_values['locked_by']) && $audit->new_values['locked_by'] === null) {
+            return 'تم فك قفل الشكوى';
+        } elseif (isset($audit->new_values['status'])) {
+            $old = $audit->old_values['status'] ?? 'غير معروف';
+            $new = $audit->new_values['status'] ?? 'غير معروف';
+            $map = [
+                'new' => 'جديدة',
+                'processing' => 'قيد المعالجة',
+                'under_review' => 'قيد المراجعة',
+                'done' => 'منجزة',
+                'rejected' => 'مرفوضة'
+            ];
+            return "تم تغيير الحالة من " . ($map[$old] ?? $old) . " إلى " . ($map[$new] ?? $new);
+        } elseif (isset($audit->new_values['assigned_to'])) {
+            $name = User::find($audit->new_values['assigned_to'] ?? null)?->name ?? 'موظف';
+            return "تم تعيين الشكوى لـ {$name}";
+        }
+        return 'تم تحديث الشكوى';
+    }
+
     public function getDashboard($user)
     {
         return match ($user->role) {
@@ -330,16 +327,17 @@ class ComplaintService
             default => collect()
         };
     }
+
     public function log($userId, $action, $details = null)
     {
         $this->audit->logAction($userId, $action, $details);
     }
-    //إضافة ملاحظة على الشكوى
+
     public function addNote(Complaint $complaint, $note)
     {
         return $this->repo->addNote($complaint, $note);
     }
-    //طلب معلومات اضافية من المستخدم
+
     public function requestMoreInfo(Complaint $complaint, string $message)
     {
         return DB::transaction(function () use ($complaint, $message) {
@@ -348,13 +346,10 @@ class ComplaintService
 
             $complaint->update(['status' => $newStatus]);
 
-            ComplaintHistory::create([
-                'complaint_id' => $complaint->id,
-                'user_id'      => auth()->id(),
-                'action'       => 'request_more_info',
-                'description'  => "طلب معلومات إضافية من المواطن: " . $message,
-                'old_data'     => ['status' => $oldStatus],
-                'new_data'     => ['status' => $newStatus, 'message' => $message],
+            $complaint->audit('request_more_info', [
+                'old_status' => $oldStatus,
+                'new_status' => $newStatus,
+                'message' => $message,
             ]);
 
             $this->audit->logAction(auth()->id(), 'complaint.info_requested', [
@@ -368,7 +363,7 @@ class ComplaintService
             return true;
         });
     }
-    // رد المواطن على طلب المعلومات الإضافية
+
     public function citizenRespondToInfoRequest(Complaint $complaint, ?Request $request = null)
     {
         return DB::transaction(function () use ($complaint, $request) {
@@ -396,14 +391,13 @@ class ComplaintService
             $this->repo->updateComplaintStatus($complaint, $newStatus);
 
             $description = "المواطن قام بالرد على طلب معلومات إضافية." . ($notes ? " الملاحظة: " . $notes : '');
-            $this->repo->logComplaintHistory(
-                $complaint->id,
-                $user->id,
-                'citizen_responded',
-                $description,
-                ['status' => $oldStatus],
-                ['status' => $newStatus, 'notes' => $notes, 'attachments_added' => $request?->hasFile('files') ? count($request->file('files')) : 0]
-            );
+
+            $complaint->audit('citizen_responded', [
+                'old_status' => $oldStatus,
+                'new_status' => $newStatus,
+                'notes' => $notes,
+                'attachments_added' => $request?->hasFile('files') ? count($request->file('files')) : 0
+            ]);
 
             $this->audit->logAction($user->id, 'citizen.info_responded', [
                 'complaint_id' => $complaint->id,
@@ -416,17 +410,18 @@ class ComplaintService
             return $complaint;
         });
     }
+
     public function getLatestInfoRequestMessage(Complaint $complaint): ?string
     {
-        $history = $this->repo->getLatestInfoRequest($complaint->id);
-        return $history ? $history->description : null;
+        $audit = $this->repo->getLatestInfoRequest($complaint->id);
+        return $audit ? $audit->new_values['message'] ?? null : null; // استخراج الـ message من new_values
     }
-    //إرجاع الشكاوى الجديدة لموظف معين في قسم معين
+
     public function getEmployeeNewComplaints(User $user)
     {
         return $this->repo->getNewForEmployee($user->id, $user->entity_id);
     }
-    //إرجاع كل الشكاوى
+
     public function getAllComplaints(array $filters = [])
     {
         return $this->repo->getAllWithFilters($filters);

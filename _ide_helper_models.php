@@ -59,9 +59,9 @@ namespace App\Models{
  * @property-read \App\Models\User|null $assignedTo
  * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\Attachment> $attachments
  * @property-read int|null $attachments_count
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, \OwenIt\Auditing\Models\Audit> $audits
+ * @property-read int|null $audits_count
  * @property-read \App\Models\Entity $entity
- * @property-read \Illuminate\Database\Eloquent\Collection<int, \App\Models\ComplaintHistory> $history
- * @property-read int|null $history_count
  * @property-read \App\Models\User|null $lockedBy
  * @property-read \App\Models\User $user
  * @method static \Illuminate\Database\Eloquent\Builder|Complaint newModelQuery()
@@ -81,35 +81,17 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder|Complaint whereUpdatedAt($value)
  * @method static \Illuminate\Database\Eloquent\Builder|Complaint whereUserId($value)
  */
-	class Complaint extends \Eloquent {}
+	class Complaint extends \Eloquent implements \OwenIt\Auditing\Contracts\Auditable {}
 }
 
 namespace App\Models{
 /**
- * @property int $id
- * @property int $complaint_id
- * @property int $user_id
- * @property string $action
- * @property string|null $description
- * @property array|null $old_data
- * @property array|null $new_data
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property-read \App\Models\Complaint $complaint
+ * @property-read \App\Models\Complaint|null $complaint
  * @property-read string $action_description
- * @property-read \App\Models\User $user
+ * @property-read \App\Models\User|null $user
  * @method static \Illuminate\Database\Eloquent\Builder|ComplaintHistory newModelQuery()
  * @method static \Illuminate\Database\Eloquent\Builder|ComplaintHistory newQuery()
  * @method static \Illuminate\Database\Eloquent\Builder|ComplaintHistory query()
- * @method static \Illuminate\Database\Eloquent\Builder|ComplaintHistory whereAction($value)
- * @method static \Illuminate\Database\Eloquent\Builder|ComplaintHistory whereComplaintId($value)
- * @method static \Illuminate\Database\Eloquent\Builder|ComplaintHistory whereCreatedAt($value)
- * @method static \Illuminate\Database\Eloquent\Builder|ComplaintHistory whereDescription($value)
- * @method static \Illuminate\Database\Eloquent\Builder|ComplaintHistory whereId($value)
- * @method static \Illuminate\Database\Eloquent\Builder|ComplaintHistory whereNewData($value)
- * @method static \Illuminate\Database\Eloquent\Builder|ComplaintHistory whereOldData($value)
- * @method static \Illuminate\Database\Eloquent\Builder|ComplaintHistory whereUpdatedAt($value)
- * @method static \Illuminate\Database\Eloquent\Builder|ComplaintHistory whereUserId($value)
  */
 	class ComplaintHistory extends \Eloquent {}
 }
@@ -216,5 +198,28 @@ namespace App\Models{
  * @method static \Illuminate\Database\Eloquent\Builder|User withoutRole($roles, $guard = null)
  */
 	class User extends \Eloquent {}
+}
+
+namespace App\Models{
+/**
+ * @property int $id
+ * @property int $complaint_id
+ * @property int $user_id
+ * @property string $note
+ * @property \Illuminate\Support\Carbon|null $created_at
+ * @property \Illuminate\Support\Carbon|null $updated_at
+ * @property-read \App\Models\Complaint $complaint
+ * @property-read \App\Models\User $user
+ * @method static \Illuminate\Database\Eloquent\Builder|complaint_note newModelQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|complaint_note newQuery()
+ * @method static \Illuminate\Database\Eloquent\Builder|complaint_note query()
+ * @method static \Illuminate\Database\Eloquent\Builder|complaint_note whereComplaintId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|complaint_note whereCreatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|complaint_note whereId($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|complaint_note whereNote($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|complaint_note whereUpdatedAt($value)
+ * @method static \Illuminate\Database\Eloquent\Builder|complaint_note whereUserId($value)
+ */
+	class complaint_note extends \Eloquent {}
 }
 
