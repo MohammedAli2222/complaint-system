@@ -11,7 +11,7 @@ class RolesAndPermissionsSeeder extends Seeder
     public function run()
     {
         $permissions = [
-            
+
             // Complaints
             'complaints.view-any',
             'complaints.view',
@@ -27,6 +27,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'view_complaint_history',
             'export_complaint_reports',
             'viewNewComplaints',
+            'complaints.view-my',
 
             // Employee Management
             'create_employee',
@@ -71,6 +72,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'complaints.unlock',
             'viewNewComplaints',
             'viewCitizens',
+            'complaints.view-my'
         ]);
 
         $citizen->givePermissionTo([

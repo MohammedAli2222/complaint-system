@@ -80,4 +80,17 @@ class UserController extends Controller
             ]
         ]);
     }
+
+    public function myPermissions(Request $request)
+    {
+        $user = $request->user();
+
+        $permissions = $user->getAllPermissions()->pluck('name')->unique()->values();
+
+        return response()->json([
+            'status' => true,
+            'message' => 'تم جلب صلاحياتك بنجاح.',
+            'data' => $permissions
+        ]);
+    }
 }

@@ -431,4 +431,12 @@ class ComplaintService
     {
         return $this->repo->getEntitiesForDropdown();
     }
+
+    public function getMyAssignedOrLockedComplaints(User $user)
+    {
+        if (!$user->hasRole('employee') && !$user->hasRole('admin')) {
+            throw new \Exception('غير مصرح لك بعرض هذه الشكاوى.', 403);
+        }
+        return $this->repo->getMyAssignedOrLockedComplaints($user->id);
+    }
 }

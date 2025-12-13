@@ -9,16 +9,14 @@ use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use OwenIt\Auditing\Models\Audit;
 
 class ComplaintRepository
 {
-    // إنشاء شكوى
     public function create(array $data)
     {
         return Complaint::create($data);
     }
-    //show Complaint by reference number
+
     public function findByReference(string $ref)
     {
         return Complaint::where('reference_number', $ref)->first();
@@ -31,7 +29,7 @@ class ComplaintRepository
             'entity:id,name',
             'assignedTo:id,name',
             'lockedBy:id,name',
-            'audits', // تغيير إلى audits بدلاً من history
+            'audits', // تغيير إلى audits
             'attachments'
         ])
             ->findOrFail($complaintId);
@@ -60,6 +58,7 @@ class ComplaintRepository
             ->latest()
             ->get();
     }
+
     public function forAdmin()
     {
         return Complaint::with([
@@ -68,32 +67,30 @@ class ComplaintRepository
             'assignedTo:id,name',
             'lockedBy:id,name',
             'attachments:id,type',
-            'audits:id,auditable_id,event,old_values,new_values,created_at,user_id' // تغيير إلى audits
+            'audits' // تغيير إلى audits
         ])
             ->select('id', 'reference_number', 'type', 'status', 'created_at', 'entity_id', 'assigned_to', 'locked_by')
             ->latest()
             ->get();
     }
-    // توليد رقم مرجعي فريد
+
     public function generateUniqueReference(int $length = 10): string
     {
-        $length = min($length, 32); // حماية من تجاوز الطول
+        $length = min($length, 32);
 
         do {
-            // 1. UUID v4
             $uuid = Str::uuid()->toString();
 
             $uniquePart = str_replace('-', '', $uuid);
 
-            // 3. تقصير السلسلة
             $referencePart = substr($uniquePart, 0, $length);
 
-            // 4. إضافة البادئة
             $reference = 'REF-' . strtoupper($referencePart);
         } while (Complaint::where('reference_number', $reference)->exists());
 
         return $reference;
     }
+
     public function getComplaintTimelineForCitizen(string $referenceNumber, int $userId)
     {
         $complaint = Complaint::where('reference_number', $referenceNumber)
@@ -101,7 +98,7 @@ class ComplaintRepository
             ->with([
                 'entity:id,name',
                 'attachments:id,complaint_id,file_path,file_name,file_type,file_size,created_at',
-                'audits' => function ($query) { // تغيير إلى audits
+                'audits' => function ($query) {
                     $query->select(
                         'id',
                         'auditable_id',
@@ -175,20 +172,23 @@ class ComplaintRepository
     {
         return $complaint->attachments()->create($data);
     }
+
     public function updateComplaintStatus(Complaint $complaint, string $newStatus): Complaint
     {
         $complaint->status = $newStatus;
         $complaint->save();
         return $complaint;
     }
+
     public function getLatestInfoRequest(int $complaintId): ?object
     {
-        return Audit::where('auditable_id', $complaintId)
-            ->where('auditable_type', Complaint::class)
+        return \OwenIt\Auditing\Models\Audit::where('auditable_id', $complaintId)
+            ->where('auditable_type', 'App\\Models\\Complaint')
             ->where('event', 'request_more_info')
             ->latest()
             ->first();
     }
+
     public function getNewForEmployee(int $userId, ?int $entityId)
     {
         return Complaint::where('status', 'new')
@@ -219,6 +219,7 @@ class ComplaintRepository
             ->latest()
             ->paginate(20);
     }
+
     public function getAllWithFilters(array $filters = [])
     {
         $query = Complaint::with([
@@ -226,7 +227,7 @@ class ComplaintRepository
             'entity:id,name',
             'assignedTo:id,name',
             'lockedBy:id,name',
-            'attachments:id,complaint_id,file_path,file_name,file_type,file_size,mime_type,created_at',  // أضف جميع الحقول من migration لعرض كامل
+            'attachments:id,complaint_id,file_path,file_name,file_type,file_size,mime_type,created_at',
             'audits:id,auditable_id,event,old_values,new_values,created_at,user_id'  // تغيير إلى audits
         ])
             ->select(
@@ -257,11 +258,39 @@ class ComplaintRepository
 
         return $query->paginate(20);
     }
+
     public function getEntitiesForDropdown()
     {
         return Entity::select('id', 'name')
-            // ->where('is_active', true)
             ->orderBy('name')
             ->get();
+    }
+
+    public function getMyAssignedOrLockedComplaints(int $userId)
+    {
+        return Complaint::where('assigned_to', $userId)
+            ->orWhere('locked_by', $userId)
+            ->with([
+                'user:id,name,email',
+                'entity:id,name',
+                'assignedTo:id,name',
+                'lockedBy:id,name',
+                'attachments:id,file_name,file_path,file_type,file_size,mime_type'
+            ])
+            ->select(
+                'id',
+                'reference_number',
+                'type',
+                'status',
+                'created_at',
+                'updated_at',
+                'entity_id',
+                'assigned_to',
+                'locked_by',
+                'location',
+                'description'
+            )
+            ->latest()
+            ->paginate(20);
     }
 }

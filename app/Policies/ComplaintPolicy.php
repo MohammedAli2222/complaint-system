@@ -130,4 +130,9 @@ class ComplaintPolicy
     {
         return $user->hasRole('employee') || $user->can('view_assigned_complaints');
     }
+
+    public function viewMyComplaints(User $user): bool
+    {
+        return $user->hasRole('employee') || $user->hasRole('admin') || $user->can('complaints.view-my');
+    }
 }

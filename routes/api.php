@@ -52,11 +52,13 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/complaints/{id}/notes', [ComplaintController::class, 'addNote']);
     Route::post('/complaints/{id}/request-info', [ComplaintController::class, 'requestMoreInfo']);
     Route::get('/complaints/{id}/getInfoRequestMessage', [ComplaintController::class, 'getInfoRequestMessage']);
+    Route::get('/my-complaints', [ComplaintController::class, 'myAssignedOrLockedComplaints']);
 
 
     // مسارات خاصة بالموظف
     Route::middleware(['role:employee'])->group(function () {
         Route::get('/complaints/{id}/unlock', [ComplaintController::class, 'unlock']);
+        Route::get('/me/permissions', [UserController::class, 'myPermissions']);
     });
 
     // مسارات خاصة بالمشرف

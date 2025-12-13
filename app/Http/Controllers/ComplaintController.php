@@ -332,4 +332,27 @@ class ComplaintController extends Controller
             'data' => $entities,
         ]);
     }
+
+
+    // في ComplaintController.php
+    public function myAssignedOrLockedComplaints(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $this->authorize('viewMyComplaints', Complaint::class);
+
+        $complaints = $this->service->getMyAssignedOrLockedComplaints($user);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'تم جلب الشكاوى المسندة إليك أو المقفلة من قبلك بنجاح.',
+            'data' => ComplaintResource::collection($complaints),
+            'pagination' => [
+                'current_page' => $complaints->currentPage(),
+                'last_page'    => $complaints->lastPage(),
+                'per_page'     => $complaints->perPage(),
+                'total'        => $complaints->total(),
+            ]
+        ]);
+    }
 }
