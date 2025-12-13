@@ -73,5 +73,8 @@ class Complaint extends Model implements Auditable
         return $this->belongsTo(User::class, 'assigned_to');
     }
 
-    // إزالة علاقة history تمامًا
+    public function notes()
+    {
+        return $this->hasMany(complaint_note::class, 'complaint_id')->orderBy('created_at', 'desc');
+    }
 }

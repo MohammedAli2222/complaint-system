@@ -8,9 +8,6 @@ use App\Models\User;
 
 class ComplaintResource extends JsonResource
 {
-    /**
-     * تحويل المصدر إلى مصفوفة (JSON).
-     */
     public function toArray($request)
     {
         return [
@@ -21,7 +18,6 @@ class ComplaintResource extends JsonResource
             'description'      => $this->description,
             'status'           => $this->status,
 
-            // 1. بيانات المواطن (صاحب الشكوى)
             'citizen' => $this->whenLoaded('user', function () {
                 return [
                     'id'    => $this->user->id,
@@ -30,7 +26,6 @@ class ComplaintResource extends JsonResource
                 ];
             }),
 
-            // 2. بيانات الجهة الحكومية
             'entity' => $this->whenLoaded('entity', function () {
                 return [
                     'id'   => $this->entity->id,
@@ -38,7 +33,6 @@ class ComplaintResource extends JsonResource
                 ];
             }),
 
-            // 3. بيانات الموظف المعين
             'assigned_to' => $this->whenLoaded('assignedTo', function () {
                 return $this->assignedTo ? [
                     'id'   => $this->assignedTo->id,
@@ -46,7 +40,6 @@ class ComplaintResource extends JsonResource
                 ] : null;
             }),
 
-            // 4. تفاصيل القفل
             'lock_details' => [
                 'is_locked'  => !is_null($this->locked_by),
                 'locked_by'  => $this->whenLoaded('lockedBy', function () {
@@ -58,29 +51,38 @@ class ComplaintResource extends JsonResource
                 'locked_at'  => optional($this->locked_at)->toDateTimeString(),
             ],
 
-            // 5. التواريخ
             'timestamps' => [
                 'created_at' => optional($this->created_at)->toDateTimeString(),
                 'updated_at' => optional($this->updated_at)->toDateTimeString(),
             ],
 
-            // 6. السجل التاريخي (التدقيق الآلي من laravel-auditing)
+            // إضافة الملاحظات الداخلية (notes) إذا كانت محملة
+            'notes' => $this->whenLoaded('notes', function () {
+                return $this->notes->map(function ($note) {
+                    return [
+                        'id'         => $note->id,
+                        'note'       => $note->note,
+                        'added_by'   => $note->user?->name ?? 'موظف',
+                        'added_at'   => $note->created_at->translatedFormat('Y/m/d - h:i A'),
+                    ];
+                })->values();
+            }),
+
+            // السجل التاريخي (التدقيق)
             'history' => $this->whenLoaded('audits', function () {
                 return $this->audits->map(function ($audit) {
                     return [
                         'id'           => $audit->id,
                         'action'       => $audit->event,
                         'description'  => $this->generateDescription($audit),
-                        'performed_by' => $audit->user_name ? $audit->user_name : 'النظام',
-                        'old_values'   => $audit->old_values ? $audit->old_values : null,
-                        'new_values'   => $audit->new_values ? $audit->new_values : null,
-                        'ip_address'   => $audit->ip_address,
+                        'performed_by' => User::find($audit->user_id)?->name ?? 'النظام',
+                        'old_values'   => $audit->old_values ?? null,
+                        'new_values'   => $audit->new_values ?? null,
                         'created_at'   => $audit->created_at->toDateTimeString(),
                     ];
-                })->values(); // لإعادة ترقيم المصفوفة
+                })->values();
             }),
 
-            // 7. المرفقات
             'attachments' => $this->whenLoaded('attachments', function () {
                 return $this->attachments->map(function ($attachment) {
                     return [
@@ -96,58 +98,74 @@ class ComplaintResource extends JsonResource
         ];
     }
 
-    /**
-     * توليد وصف عربي واضح لكل حدث تدقيق
-     */
     private function generateDescription($audit)
     {
+        $old = $audit->old_values ?? [];
+        $new = $audit->new_values ?? [];
+
         return match ($audit->event) {
-            'created'   => 'تم تقديم الشكوى بنجاح من قبل المواطن',
-            'updated'   => $this->getStatusChangeDescription($audit),
-            'assigned'  => $this->getAssignmentDescription($audit),
-            'locked'    => "تم قفل الشكوى بواسطة " . ($audit->user_name ? $audit->user_name : 'النظام') . " لبدء المعالجة",
-            'unlocked'  => "تم فك قفل الشكوى بواسطة " . ($audit->user_name ? $audit->user_name : 'النظام'),
-            'deleted'   => 'تم حذف الشكوى (غير متوقع في النظام العادي)',
-            default     => "تم تنفيذ إجراء: " . ucfirst(str_replace('_', ' ', $audit->event)),
+            'created' => 'تم تقديم الشكوى بنجاح من قبل المواطن',
+
+            'updated' => $this->getUpdatedDescription($old, $new, $audit),
+
+            'request_more_info' => 'تم طلب معلومات إضافية: ' . ($new['message'] ?? 'يرجى تقديم تفاصيل إضافية'),
+
+            'citizen_responded' => 'قام المواطن بالرد على طلب المعلومات الإضافية' .
+                ($new['notes'] ? ' مع ملاحظة: ' . $new['notes'] : ''),
+
+            default => "تم تنفيذ إجراء: " . ucfirst(str_replace('_', ' ', $audit->event)),
         };
     }
 
-    /**
-     * وصف خاص بتغيير الحالة (الأكثر أهمية وشيوعاً)
-     */
-    private function getStatusChangeDescription($audit)
+    private function getUpdatedDescription(array $old, array $new, $audit)
     {
-        $oldStatus = $audit->old_values['status'] ? $audit->old_values['status'] : null;
-        $newStatus = $audit->new_values['status'] ? $audit->new_values['status'] : null;
-
-        $translate = [
-            'new'          => 'جديدة',
-            'processing'   => 'قيد المعالجة',
-            'under_review' => 'قيد المراجعة - بانتظار ردك',
-            'done'         => 'منجزة',
-            'rejected'     => 'مرفوضة',
-        ];
-
-        $oldAr = $oldStatus ? ($translate[$oldStatus] ? $translate[$oldStatus] : $oldStatus) : 'غير معروف';
-        $newAr = $newStatus ? ($translate[$newStatus] ? $translate[$newStatus] : $newStatus) : 'غير معروف';
-
-        return "تم تحديث حالة الشكوى من «{$oldAr}» إلى «{$newAr}»";
-    }
-
-    /**
-     * وصف خاص بالتعيين
-     */
-    private function getAssignmentDescription($audit)
-    {
-        $employeeId = $audit->new_values['assigned_to'] ? $audit->new_values['assigned_to'] : null;
-
-        if (!$employeeId) {
-            return 'تم إلغاء تعيين الشكوى من الموظف';
+        // تغيير الحالة
+        if (isset($new['status']) && (!isset($old['status']) || $old['status'] !== $new['status'])) {
+            $oldStatus = $this->translateStatus($old['status'] ?? null);
+            $newStatus = $this->translateStatus($new['status']);
+            if ($oldStatus === 'غير معروف') $oldStatus = 'غير محددة';
+            return "تم تحديث حالة الشكوى من «{$oldStatus}» إلى «{$newStatus}»";
         }
 
-        $employeeName = User::find($employeeId) ? User::find($employeeId)->name : 'موظف غير معروف';
+        // قفل الشكوى
+        if (
+            isset($new['locked_by']) && $new['locked_by'] !== null &&
+            (!isset($old['locked_by']) || $old['locked_by'] === null)
+        ) {
+            $userName = User::find($audit->user_id)?->name ?? 'موظف';
+            return "تم قفل الشكوى بواسطة {$userName} لبدء المعالجة";
+        }
 
-        return "تم تعيين الشكوى للموظف: {$employeeName}";
+        // فك القفل
+        if (
+            isset($new['locked_by']) && $new['locked_by'] === null &&
+            isset($old['locked_by']) && $old['locked_by'] !== null
+        ) {
+            $userName = User::find($audit->user_id)?->name ?? 'موظف';
+            return "تم فك قفل الشكوى بواسطة {$userName}";
+        }
+
+        // تعيين موظف
+        if (isset($new['assigned_to'])) {
+            if ($new['assigned_to'] === null) {
+                return 'تم إلغاء تعيين الشكوى من الموظف';
+            }
+            $empName = User::find($new['assigned_to'])?->name ?? 'موظف';
+            return "تم تعيين الشكوى للموظف: {$empName}";
+        }
+
+        return 'تم تحديث الشكوى';
+    }
+
+    private function translateStatus($status): string
+    {
+        return match ($status) {
+            'new'           => 'جديدة',
+            'processing'    => 'قيد المعالجة',
+            'under_review'  => 'قيد المراجعة - بانتظار ردك',
+            'done'          => 'منجزة',
+            'rejected'      => 'مرفوضة',
+            default         => 'غير معروف',
+        };
     }
 }
-

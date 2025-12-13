@@ -30,7 +30,8 @@ class ComplaintRepository
             'assignedTo:id,name',
             'lockedBy:id,name',
             'audits', // تغيير إلى audits
-            'attachments'
+            'attachments',
+            'notes.user:id,name'
         ])
             ->findOrFail($complaintId);
     }
@@ -91,26 +92,14 @@ class ComplaintRepository
         return $reference;
     }
 
+    /**
+     * جلب بيانات الشكوى الأساسية فقط للمواطن (للـ Timeline)
+     * نؤجل تحميل audits و attachments إلى داخل الكاش لتحسين الأداء
+     */
     public function getComplaintTimelineForCitizen(string $referenceNumber, int $userId)
     {
-        $complaint = Complaint::where('reference_number', $referenceNumber)
+        return Complaint::where('reference_number', $referenceNumber)
             ->where('user_id', $userId)
-            ->with([
-                'entity:id,name',
-                'attachments:id,complaint_id,file_path,file_name,file_type,file_size,created_at',
-                'audits' => function ($query) {
-                    $query->select(
-                        'id',
-                        'auditable_id',
-                        'event',
-                        'old_values',
-                        'new_values',
-                        'created_at',
-                        'user_id'
-                    )
-                        ->orderBy('created_at', 'asc');
-                }
-            ])
             ->select([
                 'id',
                 'reference_number',
@@ -124,13 +113,7 @@ class ComplaintRepository
                 'locked_by',
                 'locked_at'
             ])
-            ->first();
-
-        if (!$complaint) {
-            throw new \Illuminate\Database\Eloquent\ModelNotFoundException('الشكوى غير موجودة أو لا تملك صلاحية رؤيتها');
-        }
-
-        return $complaint;
+            ->firstOrFail();
     }
 
     public function addNote(Complaint $complaint, $note)
@@ -228,7 +211,8 @@ class ComplaintRepository
             'assignedTo:id,name',
             'lockedBy:id,name',
             'attachments:id,complaint_id,file_path,file_name,file_type,file_size,mime_type,created_at',
-            'audits:id,auditable_id,event,old_values,new_values,created_at,user_id'  // تغيير إلى audits
+            'audits:id,auditable_id,event,old_values,new_values,created_at,user_id',  // تغيير إلى audits
+            'notes.user:id,name'
         ])
             ->select(
                 'id',
@@ -275,7 +259,8 @@ class ComplaintRepository
                 'entity:id,name',
                 'assignedTo:id,name',
                 'lockedBy:id,name',
-                'attachments:id,file_name,file_path,file_type,file_size,mime_type'
+                'attachments:id,file_name,file_path,file_type,file_size,mime_type',
+                'notes.user:id,name'
             ])
             ->select(
                 'id',

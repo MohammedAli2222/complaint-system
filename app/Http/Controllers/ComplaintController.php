@@ -1,5 +1,4 @@
 <?php
-// app/Http/Controllers/ComplaintController.php
 
 namespace App\Http\Controllers;
 
@@ -10,7 +9,6 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
-use Spatie\Permission\Models\Role;
 
 class ComplaintController extends Controller
 {
@@ -76,208 +74,140 @@ class ComplaintController extends Controller
     // قفل الشكوى
     public function lock($id, Request $request)
     {
-        $complaint = Complaint::findOrFail($id);
-        $this->authorize('lock', $complaint);
+        $user = $request->user();
 
-        try {
-            $this->service->lock($id, $request->user());
-
-            return response()->json([
-                'status' => true,
-                'message' => 'تم قفل الشكوى بنجاح. يمكنك الآن البدء بمعالجتها.'
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => false,
-                'message' => $e->getMessage()
-            ], 409);
-        }
-    }
-
-    // فتح قفل الشكوى
-    public function unlock($id, Request $request): JsonResponse
-    {
-        $complaint = Complaint::findOrFail($id);
-        $this->authorize('unlock', $complaint);
-
-        try {
-            $this->service->unlock($id, $request->user());
-            return response()->json([
-                'status' => true,
-                'message' => 'تم فتح قفل الشكوى بنجاح.'
-            ]);
-        } catch (\Exception $e) {
-            $statusCode = $e->getCode() === 403 ? 403 : 409;
-            return response()->json([
-                'status' => false,
-                'message' => $e->getMessage()
-            ], $statusCode);
-        }
-    }
-
-    // تتبع الشكوى
-    public function track($ref, Request $request)
-    {
-        try {
-            $data = $this->service->trackComplaint($ref, $request->user());
-
-            return response()->json([
-                'status' => true,
-                'message' => 'تم جلب تفاصيل الشكوى بنجاح',
-                'data' => $data
-            ]);
-        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
-            return response()->json([
-                'status' => false,
-                'message' => 'الشكوى غير موجودة أو لا تملك صلاحية رؤيتها'
-            ], 404);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => false,
-                'message' => 'حدث خطأ غير متوقع'
-            ], 500);
-        }
-    }
-    // تحديث حالة الشكوى
-    public function updateStatus($id, Request $request): JsonResponse
-    {
-        $complaint = Complaint::findOrFail($id);
-        $this->authorize('update', $complaint);
-
-        $request->validate([
-            'status' => 'required|string|in:new,processing,rejected,done',
-            'notes'  => 'nullable|string'
-        ]);
-
-        $this->service->updateStatus(
-            $id,
-            $request->status,
-            $request->notes,
-            $request->user()
-        );
+        $complaint = $this->service->lock($id, $user);
 
         return response()->json([
             'status' => true,
-            'message' => 'تم تحديث الحالة وإرسال إشعار بريدي للمواطن.'
+            'message' => 'Complaint locked successfully.',
+            'data' => new ComplaintResource($complaint)
         ]);
     }
 
-    // تعيين موظف للشكوى
-    public function assign($id, Request $request)
-    {
-        $complaint = Complaint::findOrFail($id);
-        $this->authorize('assign', $complaint);
-
-        $request->validate([
-            'employee_id' => [
-                'required',
-                'exists:users,id',
-                Rule::exists('model_has_roles', 'model_id')->where(function ($query) {
-                    return $query->where(
-                        'role_id',
-                        Role::where('name', 'employee')->value('id')
-                    );
-                }),
-            ],
-        ]);
-
-        $this->service->assign(
-            $complaint,
-            $request->employee_id,
-            $request->user()
-        );
-
-        return response()->json([
-            'status' => true,
-            'message' => 'تم تعيين الشكوى بنجاح وإرسال إشعار للموظف.'
-        ]);
-    }
-
-    // إضافة ملاحظة للشكوى
-    public function addNote($id, Request $request)
-    {
-        $complaint = Complaint::findOrFail($id);
-        $this->authorize('addNote', $complaint);
-
-        $request->validate([
-            'note' => 'required|string|max:2000',
-        ]);
-
-        $this->service->addNote($complaint, $request->note);
-
-        return response()->json([
-            'message' => 'تمت إضافة الملاحظة بنجاح'
-        ]);
-    }
-
-    // طلب معلومات إضافية من المواطن
-    public function requestMoreInfo(Request $request, $id)
-    {
-        $complaint = Complaint::findOrFail($id);
-        $this->authorize('requestMoreInfo', $complaint);
-
-        $request->validate([
-            'message' => 'required|string|max:2000',
-        ]);
-
-        $this->service->requestMoreInfo($complaint, $request->message);
-
-        return response()->json([
-            'status' => true,
-            'message' => 'تم إرسال طلب معلومات إضافية للمواطن'
-        ]);
-    }
-
-    // Dashboard - عرض الشكاوى حسب الصلاحية
-    public function dashboard(Request $request)
+    // فك قفل الشكوى
+    public function unlock($id, Request $request)
     {
         $user = $request->user();
 
-        // التحقق من الصلاحية لعرض الشكاوى
-        if (!$user->can('complaints.view-any') && !$user->can('view_assigned_complaints')) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->service->unlock($id, $user);
 
-        $data = $this->service->getDashboard($user);
+        $complaint = Complaint::findOrFail($id);
 
         return response()->json([
             'status' => true,
-            'data' => $data
+            'message' => 'Complaint unlocked successfully.',
+            'data' => new ComplaintResource($complaint)
         ]);
     }
 
-    public function respondToInfoRequest($id, Request $request): JsonResponse
+    // تحديث حالة الشكوى
+    public function updateStatus($id, Request $request)
     {
         $request->validate([
-            'notes' => 'nullable|string|max:2000',
-            'files' => 'sometimes|array|max:5',
+            'status' => ['required', Rule::in(['processing', 'done', 'rejected', 'under_review'])],
+            'notes' => 'nullable|string|max:1000'
+        ]);
+
+        $user = $request->user();
+        $newStatus = $request->input('status');
+        $notes = $request->input('notes');
+
+        $complaint = $this->service->updateStatus($id, $newStatus, $notes, $user);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'تم تحديث حالة الشكوى بنجاح.',
+            'data' => new ComplaintResource($complaint)
+        ]);
+    }
+
+    // تعيين الشكوى لموظف
+    public function assign($id, Request $request)
+    {
+        $request->validate([
+            'employee_id' => 'required|exists:users,id'
+        ]);
+
+        $complaint = Complaint::findOrFail($id);
+        $this->authorize('assign', $complaint);
+
+        $employeeId = $request->input('employee_id');
+        $assigner = $request->user();
+
+        $complaint = $this->service->assign($complaint, $employeeId, $assigner);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'تم تعيين الشكوى للموظف بنجاح.',
+            'data' => new ComplaintResource($complaint)
+        ]);
+    }
+
+    // إضافة ملاحظة داخلية
+    public function addNote($id, Request $request)
+    {
+        $request->validate([
+            'note' => 'required|string|max:1000'
+        ]);
+
+        $complaint = Complaint::findOrFail($id);
+        $this->authorize('addNote', $complaint);
+
+        $note = $request->input('note');
+        $user = $request->user();
+
+        $this->service->addNote($complaint, $note, $user);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'تم إضافة الملاحظة بنجاح.'
+        ]);
+    }
+
+    // طلب معلومات إضافية
+    public function requestMoreInfo($id, Request $request)
+    {
+        $request->validate([
+            'message' => 'required|string|max:1000'
+        ]);
+
+        $complaint = Complaint::findOrFail($id);
+        $this->authorize('requestMoreInfo', $complaint);
+
+        $this->service->requestMoreInfo($id, $request); // نمرر $id و $request
+
+        return response()->json([
+            'status' => true,
+            'message' => 'تم طلب معلومات إضافية بنجاح. حالة الشكوى تغيرت إلى قيد المراجعة (under_review).'
+        ]);
+    }
+
+    // رد المواطن على طلب معلومات إضافية
+    public function respondToInfoRequest($id, Request $request)
+    {
+        $request->validate([
+            'notes' => 'nullable|string|max:1000',
+            'files' => 'sometimes|array',
             'files.*' => 'file|mimes:jpg,jpeg,png,pdf|max:5048'
         ]);
 
         $complaint = Complaint::findOrFail($id);
+        $this->authorize('respondToInfoRequest', $complaint); 
+        $this->service->citizenRespondToInfoRequest($id, $request);
 
-        $this->authorize('respondToInfoRequest', $complaint);
-
-        try {
-            $this->service->citizenRespondToInfoRequest($complaint, $request);
-
-            return response()->json([
-                'status' => true,
-                'message' => 'تم إرسال المعلومات الإضافية والمرفقات بنجاح. حالة الشكوى تغيرت إلى قيد المعالجة (processing).'
-            ], 200);
-        } catch (\Exception $e) {
-            $statusCode = $e->getCode() ?: 500;
-            return response()->json([
-                'status' => false,
-                'message' => $e->getMessage()
-            ], $statusCode);
-        }
+        return response()->json([
+            'status' => true,
+            'message' => 'تم إرسال المعلومات الإضافية والمرفقات بنجاح. حالة الشكوى تغيرت إلى قيد المعالجة (processing).'
+        ]);
     }
 
+    // جلب رسالة طلب المعلومات الأخيرة
     public function getInfoRequestMessage($id): JsonResponse
     {
         $complaint = Complaint::findOrFail($id);
         $this->authorize('view', $complaint);
+
         $message = $this->service->getLatestInfoRequestMessage($complaint);
 
         return response()->json([
@@ -286,16 +216,26 @@ class ComplaintController extends Controller
         ]);
     }
 
+    // لوحة التحكم
+    public function dashboard(Request $request)
+    {
+        $user = $request->user();
+
+        $data = $this->service->getDashboard($user);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'تم جلب بيانات لوحة التحكم بنجاح.',
+            'data' => ComplaintResource::collection($data)
+        ]);
+    }
+
+    // جميع الشكاوى
     public function getAllComplaints(Request $request): JsonResponse
     {
         $this->authorize('viewAllComplaints');
 
-
-        $filters = $request->validate([
-            'status' => 'nullable|string|in:new,processing,under_review,done,rejected',
-            'start_date' => 'nullable|date',
-            'end_date' => 'nullable|date|after_or_equal:start_date',
-        ]);
+        $filters = $request->only(['status', 'start_date', 'end_date']);
 
         $complaints = $this->service->getAllComplaints($filters);
 
@@ -306,6 +246,7 @@ class ComplaintController extends Controller
         ]);
     }
 
+    // شكاوى جديدة للموظف
     public function getEmployeeNewComplaints(Request $request): JsonResponse
     {
         $this->authorize('viewNewComplaints');
@@ -320,12 +261,11 @@ class ComplaintController extends Controller
         ]);
     }
 
+    // قائمة الجهات الحكومية
     public function getEntities()
     {
-        // لا يوجد منطق عمل أو تفاعل مباشر مع قاعدة البيانات هنا
         $entities = $this->service->getEntitiesForDropdown();
 
-        // إرجاع الاستجابة بتنسيق JSON
         return response()->json([
             'status' => true,
             'message' => 'Entities retrieved successfully for dropdown.',
@@ -333,8 +273,7 @@ class ComplaintController extends Controller
         ]);
     }
 
-
-    // في ComplaintController.php
+    // الشكاوى المسندة أو المقفلة للموظف
     public function myAssignedOrLockedComplaints(Request $request): JsonResponse
     {
         $user = $request->user();
@@ -353,6 +292,38 @@ class ComplaintController extends Controller
                 'per_page'     => $complaints->perPage(),
                 'total'        => $complaints->total(),
             ]
+        ]);
+    }
+
+    /**
+     * تتبع حالة الشكوى (Timeline) للمواطن
+     */
+    public function track(string $ref, Request $request)
+    {
+        $user = $request->user();
+
+        $complaint = $this->service->getByReference($ref);
+
+        if (!$complaint) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'الشكوى غير موجودة أو الرقم المرجعي غير صحيح.'
+            ], 404);
+        }
+
+        if ($complaint->user_id !== $user->id) {
+            return response()->json([
+                'status'  => false,
+                'message' => 'غير مصرح لك بتتبع هذه الشكوى.'
+            ], 403);
+        }
+
+        $timelineData = $this->service->trackComplaint($ref, $user);
+
+        return response()->json([
+            'status'  => true,
+            'message' => 'تم جلب مسار الشكوى بنجاح.',
+            'data'    => $timelineData
         ]);
     }
 }
