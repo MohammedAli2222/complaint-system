@@ -56,7 +56,6 @@ class ComplaintResource extends JsonResource
                 'updated_at' => optional($this->updated_at)->toDateTimeString(),
             ],
 
-            // إضافة الملاحظات الداخلية (notes) إذا كانت محملة
             'notes' => $this->whenLoaded('notes', function () {
                 return $this->notes->map(function ($note) {
                     return [

@@ -193,7 +193,7 @@ class ComplaintController extends Controller
         ]);
 
         $complaint = Complaint::findOrFail($id);
-        $this->authorize('respondToInfoRequest', $complaint); 
+        $this->authorize('respondToInfoRequest', $complaint);
         $this->service->citizenRespondToInfoRequest($id, $request);
 
         return response()->json([
@@ -324,6 +324,32 @@ class ComplaintController extends Controller
             'status'  => true,
             'message' => 'تم جلب مسار الشكوى بنجاح.',
             'data'    => $timelineData
+        ]);
+    }
+
+
+
+    private const COMPLAINT_TYPES = [
+        'Service Complaint',
+        'Suggestion',
+        'Outage Report',
+        'Employee Complaint',
+        'Inquiry',
+        'Other (Enter Manually)',
+    ];
+    public function getComplaintTypes(): JsonResponse
+    {
+        $types = array_map(function (string $type) {
+            return [
+                'value' => $type,
+                'label' => $type,
+            ];
+        }, self::COMPLAINT_TYPES);
+
+        return response()->json([
+            'status' => true,
+            'message' => 'Complaint types retrieved successfully.',
+            'data' => $types,
         ]);
     }
 }

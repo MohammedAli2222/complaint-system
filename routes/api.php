@@ -24,6 +24,7 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
 Route::post('/register', [UserController::class, 'register'])->middleware('throttle:5,1');
 Route::post('/verify-otp', [UserController::class, 'verifyOtp'])->middleware('throttle:5,1');
 Route::post('/login', [UserController::class, 'login']);
+Route::get('getComplaintTypes', [ComplaintController::class, 'getComplaintTypes']);
 
 Route::get('/dropdown/entities', [ComplaintController::class, 'getEntities']);
 Route::middleware('auth:sanctum')->group(function () {
